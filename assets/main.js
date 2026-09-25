@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
      -------------------------------------------------------------------------- */
   const API_BASE = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
     ? 'http://localhost:3001/api'
-    : '/api';
+    : 'https://podhigai-backend.onrender.com/api';
 
   /* --------------------------------------------------------------------------
      1. STICKY NAVIGATION & MOBILE DRAWER

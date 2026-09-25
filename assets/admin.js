@@ -4,7 +4,7 @@
 
 const API = (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))
   ? 'http://localhost:3001/api'
-  : '/api';
+  : 'https://podhigai-backend.onrender.com/api';
 let adminToken = '';
 let currentPage = 1;
 let searchQuery = '';
@@ -40,7 +40,7 @@ function addDeletedReviewId(id, name, title) {
       if (!deleted.includes(key)) deleted.push(key);
     }
     localStorage.setItem(DELETED_REVIEWS_KEY, JSON.stringify(deleted));
-  } catch {}
+  } catch { }
 }
 
 function isReviewDeleted(r) {
@@ -63,7 +63,7 @@ function getLocalContacts() {
 function saveLocalContacts(contacts) {
   try {
     localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
-  } catch {}
+  } catch { }
 }
 
 function getLocalReviews() {
@@ -79,7 +79,7 @@ function saveLocalReviews(reviews) {
   try {
     const valid = (reviews || []).filter(r => !isReviewDeleted(r));
     localStorage.setItem(REVIEWS_KEY, JSON.stringify(valid));
-  } catch {}
+  } catch { }
 }
 
 // ── Init ──────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ function showEventsPanel() {
   if (sub) sub.textContent = 'Create, publish and manage college events and photo galleries';
 
   // Update sidebar active states
-  ['all','unread','read'].forEach(f => {
+  ['all', 'unread', 'read'].forEach(f => {
     const btn = document.getElementById(`sideNav-${f}`);
     if (btn) btn.classList.remove('active');
   });
@@ -378,7 +378,7 @@ function showGalleryPanel() {
   if (sub) sub.textContent = 'Manage photos across Campus, Labs, Student Life, Events, Programs & Graduation';
 
   // Update sidebar active states
-  ['all','unread','read'].forEach(f => {
+  ['all', 'unread', 'read'].forEach(f => {
     const btn = document.getElementById(`sideNav-${f}`);
     if (btn) btn.classList.remove('active');
   });
@@ -415,7 +415,7 @@ function showChairmanPanel() {
   if (sub) sub.textContent = 'Change Chairman photo, full name, and designation displayed in hero showcase';
 
   // Update sidebar active states
-  ['all','unread','read'].forEach(f => {
+  ['all', 'unread', 'read'].forEach(f => {
     const btn = document.getElementById(`sideNav-${f}`);
     if (btn) btn.classList.remove('active');
   });
@@ -512,7 +512,7 @@ async function fetchMergedMessages() {
         apiMessages = data.messages;
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // Use API messages as primary source of truth
   const merged = [...apiMessages];
@@ -523,7 +523,7 @@ async function fetchMergedMessages() {
     const exists = merged.some(m =>
       (m._id && locMsg._id && String(m._id) === String(locMsg._id)) ||
       ((m.email || '').toLowerCase().trim() === (locMsg.email || '').toLowerCase().trim() &&
-       (m.message || '').trim() === (locMsg.message || '').trim())
+        (m.message || '').trim() === (locMsg.message || '').trim())
     );
     if (!exists) {
       merged.push(locMsg);
@@ -596,7 +596,7 @@ async function loadMessages() {
     // Apply Search Filter
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      messages = messages.filter(m => 
+      messages = messages.filter(m =>
         (m.name && m.name.toLowerCase().includes(q)) ||
         (m.email && m.email.toLowerCase().includes(q)) ||
         (m.subject && m.subject.toLowerCase().includes(q)) ||
@@ -624,8 +624,8 @@ async function loadMessages() {
       const emptyMsg = searchQuery || dateFrom || dateTo
         ? 'No messages match your filters.'
         : currentFilter === 'unread' ? 'No unread messages. All caught up! ✅'
-        : currentFilter === 'read' ? 'No read messages yet.'
-        : 'No messages yet. The inbox is empty.';
+          : currentFilter === 'read' ? 'No read messages yet.'
+            : 'No messages yet. The inbox is empty.';
       container.innerHTML = `
         <div class="empty-state">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -770,7 +770,7 @@ async function handleMarkReadCheckbox(checkbox, id) {
       headers: { 'Authorization': `Bearer ${adminToken}` },
       signal: AbortSignal.timeout(3000)
     });
-  } catch (err) {}
+  } catch (err) { }
 
   const card = document.getElementById(`msg-${id}`);
   if (card) {
@@ -842,7 +842,7 @@ async function confirmDelete() {
       headers: { 'Authorization': `Bearer ${adminToken}` },
       signal: AbortSignal.timeout(3000)
     });
-  } catch (err) {}
+  } catch (err) { }
 
   const card = document.getElementById(`msg-${deleteTargetId}`);
   if (card) {
@@ -1054,7 +1054,7 @@ function getLocalEvents() {
 function saveLocalEvents(events) {
   try {
     localStorage.setItem(EVENTS_KEY, JSON.stringify(events || []));
-  } catch {}
+  } catch { }
 }
 
 async function loadEvents() {
@@ -1457,7 +1457,7 @@ function trackDeletedPhoto(id) {
       list.push(id);
       localStorage.setItem(DELETED_PHOTOS_KEY, JSON.stringify(list));
     }
-  } catch {}
+  } catch { }
 }
 
 function unmarkDeletedPhoto(id) {
@@ -1465,7 +1465,7 @@ function unmarkDeletedPhoto(id) {
   try {
     const list = getDeletedPhotoIds().filter(delId => delId !== id);
     localStorage.setItem(DELETED_PHOTOS_KEY, JSON.stringify(list));
-  } catch {}
+  } catch { }
 }
 
 const DEFAULT_ADMIN_GALLERY = [
@@ -1650,7 +1650,7 @@ function saveLocalGallery(photos) {
     localStorage.setItem(GALLERY_KEY, JSON.stringify(valid));
     try {
       window.dispatchEvent(new StorageEvent('storage', { key: GALLERY_KEY, newValue: JSON.stringify(valid) }));
-    } catch {}
+    } catch { }
   } catch (err) {
     console.warn('saveLocalGallery storage error:', err);
   }
@@ -2036,8 +2036,8 @@ async function handleSavePhoto(e) {
   const size = document.getElementById('photoInputSize')?.value || 'normal';
   const orderVal = document.getElementById('photoInputOrder')?.value;
   const imageUrl = document.getElementById('photoInputImg')?.value?.trim() ||
-                   document.getElementById('photoInputImgManual')?.value?.trim() ||
-                   'images/gallery-academic-complex.png';
+    document.getElementById('photoInputImgManual')?.value?.trim() ||
+    'images/gallery-academic-complex.png';
 
   if (!title) {
     alert('Please enter a photo title.');
