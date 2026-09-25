@@ -211,3 +211,17 @@
     opacity: 1 !important;
   }
 }
+
+/* Mobile & Tablet Animation Optimization: prevent horizontal overflow from side-slide transforms */
+@media (max-width: 1023px) {
+  .reveal-left,
+  .reveal-right {
+    transform: translateY(20px);
+  }
+  .reveal-left.visible,
+  .reveal-left.pcet-in,
+  .reveal-right.visible,
+  .reveal-right.pcet-in {
+    transform: translateY(0);
+  }
+}

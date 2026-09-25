@@ -444,23 +444,21 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const getCampusGalleryPhotos = () => {
-    const deletedIds = getDeletedPhotoIds();
     let result = [];
     try {
       const stored = localStorage.getItem(GALLERY_STORAGE_KEY);
-      if (!stored) {
-        result = DEFAULT_CAMPUS_GALLERY.filter(p => !deletedIds.includes(p.id));
-        localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(result));
-      } else {
+      if (stored) {
         let parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          result = parsed.filter(p => !deletedIds.includes(p.id) && !deletedIds.includes(p._id));
+          result = parsed;
         } else {
-          result = DEFAULT_CAMPUS_GALLERY.filter(p => !deletedIds.includes(p.id));
+          result = DEFAULT_CAMPUS_GALLERY;
         }
+      } else {
+        result = DEFAULT_CAMPUS_GALLERY;
       }
     } catch {
-      result = DEFAULT_CAMPUS_GALLERY.filter(p => !deletedIds.includes(p.id));
+      result = DEFAULT_CAMPUS_GALLERY;
     }
     // Sort strictly by admin sequence order (1, 2, 3...)
     result.sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
@@ -481,13 +479,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Background fetch to keep local storage in sync with MongoDB server
   const syncGalleryFromApi = async () => {
     try {
-      const res = await fetch(API_GALLERY_ENDPOINT, { signal: AbortSignal.timeout(3500) });
+      const res = await fetch(API_GALLERY_ENDPOINT, {
+        headers: { 'Cache-Control': 'no-cache, no-store' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.photos)) {
-          const deletedIds = getDeletedPhotoIds();
-          const cleanPhotos = data.photos.filter(p => !deletedIds.includes(p.id) && !deletedIds.includes(p._id));
-          localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(cleanPhotos));
+          localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(data.photos));
           renderCampusGallery();
         }
       }
@@ -501,6 +501,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === GALLERY_STORAGE_KEY || e.key === DELETED_PHOTOS_KEY) {
       renderCampusGallery();
     }
+  });
+
+  // In-tab event listener from admin mutations
+  window.addEventListener('podhigai:galleryUpdated', () => {
+    syncGalleryFromApi();
   });
 
   const renderCampusGallery = () => {
@@ -737,28 +742,8 @@ document.addEventListener('DOMContentLoaded', () => {
         return DEFAULT_EVENTS;
       }
       let parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length) {
-        DEFAULT_EVENTS.forEach(defEvt => {
-          if (!parsed.some(e => e.id === defEvt.id)) {
-            parsed.push(defEvt);
-          }
-        });
-        const cleaned = parsed.map(e => {
-          if (e.coverImage && (e.coverImage.endsWith('.jpg') || e.coverImage.endsWith('.webp'))) {
-            if (e.id === 'evt_1') e.coverImage = 'images/event-technova-symposium.png';
-            else if (e.id === 'evt_2') e.coverImage = 'images/event-placement-drive.png';
-            else if (e.id === 'evt_3') e.coverImage = 'images/event-ai-cloud-workshop.png';
-          }
-          if (Array.isArray(e.gallery)) {
-            e.gallery = e.gallery.map(g => {
-              if (g.endsWith('.jpg') || g.endsWith('.webp')) return 'images/event-technova-symposium.png';
-              return g;
-            });
-          }
-          return e;
-        });
-        localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(cleaned));
-        return cleaned.filter(e => e.published !== false);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(e => e.published !== false);
       }
       return DEFAULT_EVENTS;
     } catch {
@@ -2415,20 +2400,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const fetchLiveEvents = async () => {
     try {
-      const res = await fetch(`${API_BASE}/events`);
+      const res = await fetch(`${API_BASE}/events`, {
+        headers: { 'Cache-Control': 'no-cache, no-store' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
+      });
       if (res.ok) {
         const data = await res.json();
         const eventsList = Array.isArray(data) ? data : (data.events || []);
-        if (Array.isArray(eventsList) && eventsList.length) {
+        if (Array.isArray(eventsList)) {
           localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(eventsList));
-          currentEvents = eventsList;
+          currentEvents = eventsList.filter(e => e.published !== false);
           renderEvents();
+          window.dispatchEvent(new CustomEvent('podhigai:eventsUpdated', { detail: { events: currentEvents } }));
         }
       }
     } catch {
       // Backend offline: seamless fallback to localStorage/defaults
     }
   };
+
+  // Cross-tab and in-tab auto-sync: when admin creates/updates/deletes an event
+  window.addEventListener('storage', (e) => {
+    if (e.key === EVENTS_STORAGE_KEY) {
+      currentEvents = getEvents();
+      renderEvents();
+    }
+  });
+
+  window.addEventListener('podhigai:eventsUpdated', () => {
+    currentEvents = getEvents();
+    renderEvents();
+  });
+
+  window.addEventListener('podhigai:openEventGallery', (e) => {
+    const eventId = e.detail && e.detail.id;
+    if (eventId) {
+      openEventGallery(eventId);
+    }
+  });
 
   renderEvents();
   fetchLiveEvents();
@@ -2599,10 +2609,12 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('Error reading chairman settings from localStorage:', e);
     }
 
-    // 2. Fetch from Backend API if available
+    // 2. Fetch from Backend API with cache: 'no-store'
     try {
       const res = await fetch(`${API_BASE}/chairman`, {
-        signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+        headers: { 'Cache-Control': 'no-cache, no-store' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
       });
       if (res.ok) {
         const data = await res.json();
@@ -2631,4 +2643,117 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   initHeroChairman();
+
+  /* --------------------------------------------------------------------------
+     TRUE CROSS-DEVICE REAL-TIME SYNCHRONIZATION (Socket.IO Push + REST Pull)
+     -------------------------------------------------------------------------- */
+  const SOCKET_SERVER_URL = API_BASE.replace(/\/api$/, '');
+  let publicRealTimeSocket = null;
+  let isReconnection = false;
+
+  function createDebouncedSync(fn, waitMs = 250) {
+    let timeout = null;
+    return function (...args) {
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        timeout = null;
+        fn(...args);
+      }, waitMs);
+    };
+  }
+
+  const syncEvents = createDebouncedSync(async () => {
+    console.log('📡 [RealTime Sync] Fetching latest events from MongoDB Atlas...');
+    await fetchLiveEvents();
+  }, 200);
+
+  const syncGallery = createDebouncedSync(async () => {
+    console.log('📡 [RealTime Sync] Fetching latest gallery from MongoDB Atlas...');
+    await syncGalleryFromApi();
+  }, 200);
+
+  const syncChairman = createDebouncedSync(async () => {
+    console.log('📡 [RealTime Sync] Fetching latest chairman from MongoDB Atlas...');
+    await initHeroChairman();
+  }, 200);
+
+  function initPublicRealTimeSync() {
+    if (typeof io === 'undefined') {
+      // Resilient fallback if CDN script tag is still loading
+      const script = document.createElement('script');
+      script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+      script.async = true;
+      script.onload = () => initPublicRealTimeSync();
+      document.head.appendChild(script);
+      return;
+    }
+
+    if (publicRealTimeSocket) return; // Exactly ONE active connection
+
+    try {
+      publicRealTimeSocket = io(SOCKET_SERVER_URL, {
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+        transports: ['websocket', 'polling']
+      });
+
+      publicRealTimeSocket.on('connect', () => {
+        console.log(`🔌 [RealTime Sync] Connected to server push: ${publicRealTimeSocket.id}`);
+        if (isReconnection) {
+          console.log('🔄 [RealTime Sync] Reconnection established. Catching up with latest MongoDB state...');
+          syncEvents();
+          syncGallery();
+          syncChairman();
+        }
+        isReconnection = true;
+      });
+
+      publicRealTimeSocket.on('disconnect', (reason) => {
+        console.warn(`🔌 [RealTime Sync] Disconnected: ${reason}`);
+      });
+
+      publicRealTimeSocket.on('reconnect', () => {
+        console.log('🟢 [RealTime Sync] Reconnected to server.');
+        syncEvents();
+        syncGallery();
+        syncChairman();
+      });
+
+      publicRealTimeSocket.on('connect_error', (err) => {
+        console.warn(`🔌 [RealTime Sync] Connection error: ${err.message}`);
+      });
+
+      // Server push notifications (lightweight alerts: MongoDB is the source of truth)
+      publicRealTimeSocket.on('events:updated', () => {
+        syncEvents();
+      });
+
+      publicRealTimeSocket.on('gallery:updated', () => {
+        syncGallery();
+      });
+
+      publicRealTimeSocket.on('chairman:updated', () => {
+        syncChairman();
+      });
+
+      // Browser online event (e.g. WiFi reconnected)
+      window.addEventListener('online', () => {
+        console.log('🌐 [RealTime Sync] Device network online. Synchronizing latest state...');
+        if (!publicRealTimeSocket.connected) {
+          publicRealTimeSocket.connect();
+        }
+        syncEvents();
+        syncGallery();
+        syncChairman();
+      });
+
+    } catch (err) {
+      console.error('Real-time sync initialization failed:', err);
+    }
+  }
+
+  initPublicRealTimeSync();
 });

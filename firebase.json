@@ -12,7 +12,8 @@
       "public/**",
       "package.json",
       "package-lock.json",
-      "**/*.log"
+      "**/*.log",
+      "firebase-debug.txt"
     ]
   }
 }

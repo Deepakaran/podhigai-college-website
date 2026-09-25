@@ -17,6 +17,230 @@ let rvCurrentRating = 'all';
 let rvSearchQuery = '';
 let currentView = 'messages'; // 'messages' | 'reviews'
 
+// ── Backend Health Check ──────────────────────────────────────
+async function checkBackendHealth() {
+  const badge = document.getElementById('backendHealthBadge');
+  const text = badge ? badge.querySelector('.health-text') : null;
+
+  if (badge) {
+    badge.className = 'health-badge checking';
+    if (text) text.textContent = 'Checking...';
+  }
+
+  try {
+    const res = await fetch(`${API}/health`, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache, no-store' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
+    });
+    if (res.ok) {
+      if (badge) {
+        badge.className = 'health-badge connected';
+        badge.title = 'Backend Connected (Render / Local API)';
+        if (text) text.textContent = 'Backend Connected';
+      }
+      return true;
+    } else {
+      if (badge) {
+        badge.className = 'health-badge offline';
+        badge.title = `Backend Offline (Status ${res.status})`;
+        if (text) text.textContent = 'Backend Offline';
+      }
+      return false;
+    }
+  } catch (err) {
+    if (badge) {
+      badge.className = 'health-badge offline';
+      badge.title = 'Backend Unreachable. Please check server status.';
+      if (text) text.textContent = 'Backend Offline';
+    }
+    return false;
+  }
+}
+
+// ── Real XMLHttpRequest with Upload Progress ───────────────────
+function apiRequestWithProgress({ url, method = 'GET', data = null, token = '', onProgress = null, timeout = 60000 }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+    xhr.timeout = timeout;
+
+    if (token) {
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    }
+    if (data && typeof data === 'object' && !(data instanceof FormData)) {
+      xhr.setRequestHeader('Content-Type', 'application/json');
+    }
+    xhr.setRequestHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    xhr.setRequestHeader('Pragma', 'no-cache');
+
+    // Real upload progress tracking via xhr.upload.onprogress
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && evt.total > 0) {
+          const percent = Math.min(100, Math.round((evt.loaded / evt.total) * 100));
+          onProgress(percent, evt.loaded, evt.total);
+        }
+      };
+    }
+
+    xhr.onload = () => {
+      let responseData = {};
+      try {
+        responseData = JSON.parse(xhr.responseText || '{}');
+      } catch (e) {
+        responseData = { message: xhr.statusText || 'Invalid response from server' };
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve({ ok: true, status: xhr.status, data: responseData });
+      } else {
+        const errorMsg = responseData.message || `Request failed with status ${xhr.status}`;
+        resolve({ ok: false, status: xhr.status, data: responseData, message: errorMsg });
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error. Please check your connection or backend server status.'));
+    };
+
+    xhr.ontimeout = () => {
+      reject(new Error('Request timed out. The server took too long to respond.'));
+    };
+
+    if (data) {
+      const body = (typeof data === 'object' && !(data instanceof FormData)) ? JSON.stringify(data) : data;
+      xhr.send(body);
+    } else {
+      xhr.send();
+    }
+  });
+}
+
+// ── Toast Notifications ───────────────────────────────────────
+function showToast(message, type = 'info', duration = 4000) {
+  const container = document.getElementById('adminToastContainer');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `admin-toast ${type}`;
+
+  const icons = {
+    success: '✓',
+    error: '✕',
+    warning: '⚠',
+    info: 'ℹ'
+  };
+
+  toast.innerHTML = `
+    <span class="admin-toast-icon">${icons[type] || 'ℹ'}</span>
+    <span class="admin-toast-message">${escHtml(message)}</span>
+    <button class="admin-toast-close" onclick="this.parentElement.remove()" title="Close">&times;</button>
+  `;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.style.animation = 'fadeOut 0.3s ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, duration);
+}
+
+// ── Button State & Spinner Management ─────────────────────────
+function setButtonLoading(btn, isLoading, loadingText = 'Saving…', defaultText = 'Save') {
+  if (!btn) return;
+  if (isLoading) {
+    btn.disabled = true;
+    if (!btn.dataset.originalHtml) {
+      btn.dataset.originalHtml = btn.innerHTML;
+    }
+    btn.innerHTML = `<span class="btn-spinner"></span> ${loadingText}`;
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.originalHtml) {
+      btn.innerHTML = btn.dataset.originalHtml;
+    } else {
+      btn.innerHTML = defaultText;
+    }
+  }
+}
+
+// ── Upload Progress UI Helpers ────────────────────────────────
+function showUploadProgress(containerId, labelId, percentId, barId, hintId, labelText = 'Uploading image…') {
+  const container = document.getElementById(containerId);
+  const label = document.getElementById(labelId);
+  const percent = document.getElementById(percentId);
+  const bar = document.getElementById(barId);
+  const hint = document.getElementById(hintId);
+
+  if (container) container.style.display = 'block';
+  if (label) label.textContent = labelText;
+  if (percent) percent.textContent = '0%';
+  if (bar) {
+    bar.style.width = '0%';
+    bar.style.background = 'var(--blue)';
+  }
+  if (hint) {
+    hint.textContent = 'Please keep this page open.';
+    hint.style.color = 'var(--muted)';
+  }
+}
+
+function updateUploadProgress(percentId, barId, hintId, percent, loadedBytes, totalBytes) {
+  const percentEl = document.getElementById(percentId);
+  const barEl = document.getElementById(barId);
+  const hintEl = document.getElementById(hintId);
+
+  if (percentEl) percentEl.textContent = `${percent}%`;
+  if (barEl) barEl.style.width = `${percent}%`;
+
+  if (hintEl && totalBytes > 0) {
+    const loadedMB = (loadedBytes / (1024 * 1024)).toFixed(1);
+    const totalMB = (totalBytes / (1024 * 1024)).toFixed(1);
+    hintEl.textContent = percent < 100
+      ? `Uploading ${loadedMB}MB of ${totalMB}MB (${percent}%) — Please keep this page open.`
+      : 'Processing and saving to database… Please wait.';
+    hintEl.style.color = 'var(--muted)';
+  }
+}
+
+function completeUploadProgress(percentId, barId, hintId, successText = 'Upload complete ✓') {
+  const percentEl = document.getElementById(percentId);
+  const barEl = document.getElementById(barId);
+  const hintEl = document.getElementById(hintId);
+
+  if (percentEl) percentEl.textContent = '100%';
+  if (barEl) {
+    barEl.style.width = '100%';
+    barEl.style.background = 'var(--green)';
+  }
+  if (hintEl) {
+    hintEl.textContent = successText;
+    hintEl.style.color = 'var(--green)';
+  }
+}
+
+function failUploadProgress(containerId, percentId, barId, hintId, errorText = 'Upload failed. Please try again.') {
+  const barEl = document.getElementById(barId);
+  const hintEl = document.getElementById(hintId);
+
+  if (barEl) barEl.style.background = 'var(--red)';
+  if (hintEl) {
+    hintEl.textContent = errorText;
+    hintEl.style.color = 'var(--red)';
+  }
+}
+
+function hideUploadProgress(containerId, delay = 1000) {
+  setTimeout(() => {
+    const container = document.getElementById(containerId);
+    if (container) container.style.display = 'none';
+  }, delay);
+}
+
 // ── Local Storage Helpers ─────────────────────────────────────
 const CONTACTS_KEY = 'podhigai_contacts';
 const REVIEWS_KEY = 'podhigai_reviews';
@@ -84,6 +308,9 @@ function saveLocalReviews(reviews) {
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  checkBackendHealth();
+  setInterval(checkBackendHealth, 30000);
+
   const savedToken = sessionStorage.getItem('adminToken');
   if (savedToken) {
     adminToken = savedToken;
@@ -278,6 +505,7 @@ function showLogin() {
 async function showDashboard() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboardScreen').style.display = 'flex';
+  checkBackendHealth();
   await Promise.all([loadStats(), loadMessages()]);
 }
 
@@ -503,8 +731,12 @@ async function fetchMergedMessages() {
   try {
     const params = new URLSearchParams({ page: 1, limit: 100 });
     const res = await fetch(`${API}/admin/messages?${params}`, {
-      headers: { 'Authorization': `Bearer ${adminToken}` },
-      signal: AbortSignal.timeout(3000)
+      headers: {
+        'Authorization': `Bearer ${adminToken}`,
+        'Cache-Control': 'no-cache, no-store'
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
     if (res.ok) {
       const data = await res.json();
@@ -512,7 +744,9 @@ async function fetchMergedMessages() {
         apiMessages = data.messages;
       }
     }
-  } catch (e) { }
+  } catch (e) {
+    console.warn('Backend messages fetch notice:', e.message);
+  }
 
   // Use API messages as primary source of truth
   const merged = [...apiMessages];
@@ -531,6 +765,26 @@ async function fetchMergedMessages() {
   });
 
   return merged;
+}
+
+// ── Refresh Enquiries Button Handler ──────────────────────────
+async function refreshMessages() {
+  const btn = document.getElementById('refreshMessagesBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add('refreshing');
+  }
+  try {
+    await Promise.all([loadMessages(), loadStats()]);
+    showToast('Enquiries refreshed from server ✓', 'info', 2500);
+  } catch (err) {
+    showToast('Failed to refresh enquiries from server.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('refreshing');
+    }
+  }
 }
 
 // ── Stats ─────────────────────────────────────────────────────
@@ -767,10 +1021,17 @@ async function handleMarkReadCheckbox(checkbox, id) {
   try {
     await fetch(`${API}/admin/messages/${id}/read`, {
       method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${adminToken}` },
-      signal: AbortSignal.timeout(3000)
+      headers: {
+        'Authorization': `Bearer ${adminToken}`,
+        'Cache-Control': 'no-cache, no-store'
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
-  } catch (err) { }
+    showToast('Message marked as read', 'info', 2000);
+  } catch (err) {
+    console.warn('Mark read API notice:', err);
+  }
 
   const card = document.getElementById(`msg-${id}`);
   if (card) {
@@ -827,7 +1088,7 @@ async function confirmDelete() {
   const btn = document.getElementById('confirmDeleteBtn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = 'Deleting…';
+    btn.innerHTML = '<span class="btn-spinner"></span> Deleting…';
   }
 
   // 1. Delete from LocalStorage
@@ -837,12 +1098,21 @@ async function confirmDelete() {
 
   // 2. Delete via API
   try {
-    await fetch(`${API}/admin/messages/${deleteTargetId}`, {
+    const res = await fetch(`${API}/admin/messages/${deleteTargetId}`, {
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${adminToken}` },
-      signal: AbortSignal.timeout(3000)
+      headers: {
+        'Authorization': `Bearer ${adminToken}`,
+        'Cache-Control': 'no-cache, no-store'
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
-  } catch (err) { }
+    if (res.ok) {
+      showToast('Enquiry deleted successfully', 'success', 2500);
+    }
+  } catch (err) {
+    console.warn('Delete message API notice:', err);
+  }
 
   const card = document.getElementById(`msg-${deleteTargetId}`);
   if (card) {
@@ -1064,26 +1334,33 @@ async function loadEvents() {
 
   try {
     let events = [];
-    // 1. Fetch from backend API
+    let apiFetched = false;
+
+    // 1. Fetch authoritatively from backend API
     try {
       const searchParam = evtSearchQuery ? `?search=${encodeURIComponent(evtSearchQuery)}` : '';
       const res = await fetch(`${API}/admin/events${searchParam}`, {
-        headers: { 'Authorization': `Bearer ${adminToken}` },
-        signal: AbortSignal.timeout(3000)
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+          'Cache-Control': 'no-cache, no-store'
+        },
+        cache: 'no-store',
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
       });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.events)) {
           events = data.events;
           saveLocalEvents(events);
+          apiFetched = true;
         }
       }
     } catch (apiErr) {
-      console.warn('API events fetch fallback to local:', apiErr);
+      console.warn('API events fetch fallback to local:', apiErr.message);
     }
 
-    // 2. Fallback to local storage if API was unreachable
-    if (!events.length) {
+    // 2. Only fallback to local storage if API was completely unreachable
+    if (!apiFetched) {
       events = getLocalEvents();
       if (evtSearchQuery) {
         const q = evtSearchQuery.toLowerCase();
@@ -1108,14 +1385,18 @@ async function loadEvents() {
             <line x1="8" y1="2" x2="8" y2="6"></line>
             <line x1="3" y1="10" x2="21" y2="10"></line>
           </svg>
-          <p>No events found. Click "Add New Event" to create one.</p>
+          <p>No events found. Click "+ Add New Event" to create one.</p>
         </div>`;
       return;
     }
 
     container.innerHTML = events.map(e => renderAdminEventCard(e)).join('');
   } catch (err) {
-    container.innerHTML = `<div class="empty-state"><p>Error loading events.</p></div>`;
+    container.innerHTML = `
+      <div class="empty-state">
+        <p>Error loading events from server.</p>
+        <button type="button" class="dash-refresh-btn" onclick="loadEvents()" style="margin-top:10px;">Retry</button>
+      </div>`;
   }
 }
 
@@ -1306,7 +1587,7 @@ function closeEventModal() {
 
 async function handleSaveEvent(e) {
   e.preventDefault();
-  const events = getLocalEvents();
+  const submitBtn = document.getElementById('saveEventSubmitBtn');
 
   const title = document.getElementById('evtInputTitle').value.trim();
   const date = document.getElementById('evtInputDate').value.trim();
@@ -1319,7 +1600,7 @@ async function handleSaveEvent(e) {
   const published = document.getElementById('evtInputPublished').checked;
 
   if (!title || !date) {
-    alert('Please enter event title and date.');
+    showToast('Please enter both event title and date.', 'warning');
     return;
   }
 
@@ -1328,74 +1609,82 @@ async function handleSaveEvent(e) {
     gallery: [coverImage, 'images/hero-campus-entrance.png']
   };
 
-  try {
-    if (editingEventId) {
-      const res = await fetch(`${API}/admin/events/${editingEventId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert(data.message || 'Failed to update event.');
-        return;
-      }
-    } else {
-      const res = await fetch(`${API}/admin/events`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!data.success) {
-        alert(data.message || 'Failed to create event.');
-        return;
-      }
-    }
-  } catch (apiErr) {
-    // Local fallback update if offline
-    console.warn('Event API save error, saving locally:', apiErr);
-    if (editingEventId) {
-      const idx = events.findIndex(ev => ev.id === editingEventId);
-      if (idx !== -1) {
-        events[idx] = { ...events[idx], ...payload };
-      }
-    } else {
-      const newId = 'evt_' + Date.now();
-      events.unshift({ id: newId, ...payload });
-    }
-    saveLocalEvents(events);
+  // Prevent double submissions
+  setButtonLoading(submitBtn, true, editingEventId ? 'Updating event…' : 'Saving event…', editingEventId ? 'Update Event' : 'Save Event');
+
+  // If uploading a base64 image, display real upload progress bar
+  const isBase64Upload = coverImage && coverImage.startsWith('data:');
+  if (isBase64Upload) {
+    showUploadProgress('evtUploadProgress', 'evtUploadLabel', 'evtUploadPercent', 'evtProgressBar', 'evtUploadHint', 'Uploading event cover image…');
   }
 
-  closeEventModal();
-  loadEvents();
-  loadStats();
+  try {
+    const url = editingEventId ? `${API}/admin/events/${editingEventId}` : `${API}/admin/events`;
+    const method = editingEventId ? 'PUT' : 'POST';
+
+    const result = await apiRequestWithProgress({
+      url,
+      method,
+      data: payload,
+      token: adminToken,
+      onProgress: (percent, loaded, total) => {
+        updateUploadProgress('evtUploadPercent', 'evtProgressBar', 'evtUploadHint', percent, loaded, total);
+      }
+    });
+
+    if (result.ok && result.data && result.data.success) {
+      if (isBase64Upload) {
+        completeUploadProgress('evtUploadPercent', 'evtProgressBar', 'evtUploadHint', 'Cover image uploaded & saved ✓');
+      }
+      showToast(editingEventId ? 'Event updated successfully' : 'Event created successfully', 'success');
+      hideUploadProgress('evtUploadProgress', 600);
+      closeEventModal();
+
+      // Authoritative re-fetch from MongoDB
+      await loadEvents();
+      await loadStats();
+
+      // Broadcast to mobile carousel and other public components
+      window.dispatchEvent(new CustomEvent('podhigai:eventsUpdated'));
+    } else {
+      if (isBase64Upload) {
+        failUploadProgress('evtUploadProgress', 'evtUploadPercent', 'evtProgressBar', 'evtUploadHint', result.message || 'Save failed.');
+      }
+      showToast(result.message || 'Failed to save event. Check connection.', 'error');
+    }
+  } catch (err) {
+    console.error('Event save error:', err);
+    if (isBase64Upload) {
+      failUploadProgress('evtUploadProgress', 'evtUploadPercent', 'evtProgressBar', 'evtUploadHint', 'Upload failed. Check backend connection.');
+    }
+    showToast(err.message || 'Network error saving event.', 'error');
+  } finally {
+    setButtonLoading(submitBtn, false, '', editingEventId ? 'Update Event' : 'Save Event');
+  }
 }
 
 async function togglePublishEvent(id, currentlyPublished) {
   try {
-    await fetch(`${API}/admin/events/${id}/toggle`, {
+    const result = await apiRequestWithProgress({
+      url: `${API}/admin/events/${id}/toggle`,
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${adminToken}`
-      },
-      body: JSON.stringify({ field: 'published' })
+      data: { field: 'published' },
+      token: adminToken
     });
+
+    if (result.ok) {
+      showToast(currentlyPublished ? 'Event unpublished (hidden from site)' : 'Event published live on website', 'info', 2500);
+    } else {
+      showToast(result.message || 'Failed to update event publish status.', 'warning');
+    }
   } catch (err) {
-    console.warn('Toggle event API error:', err);
+    console.warn('Toggle event API notice:', err);
+    showToast('Network error updating status.', 'error');
   }
 
-  const events = getLocalEvents();
-  const updated = events.map(e => (e.id === id || e._id === id) ? { ...e, published: !currentlyPublished } : e);
-  saveLocalEvents(updated);
-  loadEvents();
+  // Authoritative re-fetch
+  await loadEvents();
+  window.dispatchEvent(new CustomEvent('podhigai:eventsUpdated'));
 }
 
 function openDeleteEventModal(id) {
@@ -1412,22 +1701,31 @@ function closeDeleteEventModal() {
 
 async function confirmDeleteEvent() {
   if (!deleteEventTargetId) return;
+  const btn = document.getElementById('confirmDeleteEventBtn');
+  setButtonLoading(btn, true, 'Deleting…', 'Delete Event');
 
   try {
-    await fetch(`${API}/admin/events/${deleteEventTargetId}`, {
+    const result = await apiRequestWithProgress({
+      url: `${API}/admin/events/${deleteEventTargetId}`,
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${adminToken}` }
+      token: adminToken
     });
-  } catch (err) {
-    console.warn('Delete event API error:', err);
-  }
 
-  const events = getLocalEvents();
-  const filtered = events.filter(e => e.id !== deleteEventTargetId && e._id !== deleteEventTargetId);
-  saveLocalEvents(filtered);
-  closeDeleteEventModal();
-  loadEvents();
-  loadStats();
+    if (result.ok) {
+      showToast('Event deleted successfully', 'success', 2500);
+    } else {
+      showToast(result.message || 'Failed to delete event on server.', 'warning');
+    }
+  } catch (err) {
+    console.warn('Delete event API notice:', err);
+    showToast('Network error deleting event.', 'error');
+  } finally {
+    setButtonLoading(btn, false, '', 'Delete Event');
+    closeDeleteEventModal();
+    await loadEvents();
+    await loadStats();
+    window.dispatchEvent(new CustomEvent('podhigai:eventsUpdated'));
+  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1663,25 +1961,32 @@ async function loadGallery() {
 
   try {
     let allPhotos = [];
-    // 1. Fetch from backend API
+    let apiFetched = false;
+
+    // 1. Fetch authoritatively from backend API
     try {
       const res = await fetch(`${API}/admin/gallery`, {
-        headers: { 'Authorization': `Bearer ${adminToken}` },
-        signal: AbortSignal.timeout(3000)
+        headers: {
+          'Authorization': `Bearer ${adminToken}`,
+          'Cache-Control': 'no-cache, no-store'
+        },
+        cache: 'no-store',
+        signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
       });
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.photos)) {
           allPhotos = data.photos;
           saveLocalGallery(allPhotos);
+          apiFetched = true;
         }
       }
     } catch (apiErr) {
-      console.warn('API gallery fetch fallback to local:', apiErr);
+      console.warn('API gallery fetch fallback notice:', apiErr.message);
     }
 
-    // 2. Fallback to local storage if API was unreachable
-    if (!allPhotos.length) {
+    // 2. Only fallback to local storage if API was completely unreachable
+    if (!apiFetched) {
       allPhotos = getLocalGallery();
     }
 
@@ -1745,7 +2050,11 @@ async function loadGallery() {
     container.innerHTML = filtered.map(p => renderAdminPhotoCard(p)).join('');
   } catch (err) {
     console.error('loadGallery error:', err);
-    container.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;"><p>Error loading photos.</p></div>`;
+    container.innerHTML = `
+      <div class="empty-state" style="grid-column: 1/-1;">
+        <p>Error loading photos from server.</p>
+        <button type="button" class="dash-refresh-btn" onclick="loadGallery()" style="margin-top:10px;">Retry</button>
+      </div>`;
   }
 }
 
@@ -1819,21 +2128,22 @@ async function shiftPhotoOrder(id, direction) {
   loadGallery();
 
   try {
-    const res = await fetch(`${API}/admin/gallery/reorder`, {
+    const result = await apiRequestWithProgress({
+      url: `${API}/admin/gallery/reorder`,
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${adminToken}`
-      },
-      body: JSON.stringify({ orders: orderUpdates })
+      data: { orders: orderUpdates },
+      token: adminToken
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-      console.warn('Reorder API notice:', data.message);
+
+    if (result.ok) {
+      showToast('Photo display order updated ✓', 'info', 2000);
+      window.dispatchEvent(new CustomEvent('podhigai:galleryUpdated'));
     }
   } catch (err) {
-    console.warn('Reorder API network notice:', err);
+    console.warn('Reorder API notice:', err);
   }
+
+  await loadGallery();
 }
 
 function selectGalleryCategory(cat) {
@@ -1922,11 +2232,11 @@ function initGalleryDragAndDrop() {
 
   function handlePhotoFile(file) {
     if (!file.type.startsWith('image/')) {
-      alert('Please upload a valid image file (PNG, JPG, JPEG, WEBP).');
+      showToast('Please upload a valid image file (PNG, JPG, JPEG, WEBP).', 'warning');
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
-      alert('Image is too large. Please select an image under 15MB.');
+      showToast('Image is too large. Please select an image under 15MB.', 'warning');
       return;
     }
 
@@ -1934,7 +2244,6 @@ function initGalleryDragAndDrop() {
     compressImageFile(file, 1400, 1400, 0.84, (compressedDataUrl) => {
       setPhotoPreview(compressedDataUrl);
     }, () => {
-      // Fallback to direct dataURL
       const reader = new FileReader();
       reader.onload = (e) => setPhotoPreview(e.target.result);
       reader.readAsDataURL(file);
@@ -2028,7 +2337,7 @@ function closePhotoModal() {
 
 async function handleSavePhoto(e) {
   e.preventDefault();
-  const photos = getLocalGallery();
+  const submitBtn = document.getElementById('savePhotoSubmitBtn');
 
   const title = document.getElementById('photoInputTitle')?.value?.trim();
   const caption = document.getElementById('photoInputCaption')?.value?.trim() || '';
@@ -2040,14 +2349,15 @@ async function handleSavePhoto(e) {
     'images/gallery-academic-complex.png';
 
   if (!title) {
-    alert('Please enter a photo title.');
+    showToast('Please enter a photo title.', 'warning');
     return;
   }
   if (!imageUrl) {
-    alert('Please choose or upload a photo image.');
+    showToast('Please choose or upload a photo image.', 'warning');
     return;
   }
 
+  const photos = getLocalGallery();
   let orderNum = photos.length + 1;
   if (orderVal !== undefined && orderVal !== '' && !isNaN(Number(orderVal))) {
     orderNum = Number(orderVal);
@@ -2065,70 +2375,58 @@ async function handleSavePhoto(e) {
     order: orderNum
   };
 
-  try {
-    if (editingPhotoId) {
-      const res = await fetch(`${API}/admin/gallery/${editingPhotoId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        alert(data.message || 'Failed to update photo on server.');
-        return;
-      }
-      unmarkDeletedPhoto(editingPhotoId);
-      const updatedPhoto = data.photo || { id: editingPhotoId, ...payload };
-      const idx = photos.findIndex(p => p.id === editingPhotoId || p._id === editingPhotoId);
-      if (idx !== -1) {
-        photos[idx] = { ...photos[idx], ...updatedPhoto };
-      } else {
-        photos.unshift(updatedPhoto);
-      }
-      saveLocalGallery(photos);
-    } else {
-      const res = await fetch(`${API}/admin/gallery`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.success) {
-        alert(data.message || 'Failed to create photo on server.');
-        return;
-      }
-      const newPhoto = data.photo || { id: 'photo_' + Date.now(), ...payload };
-      unmarkDeletedPhoto(newPhoto.id);
-      photos.unshift(newPhoto);
-      saveLocalGallery(photos);
-    }
-  } catch (apiErr) {
-    console.warn('Gallery API save notice (offline fallback):', apiErr);
-    if (editingPhotoId) {
-      const idx = photos.findIndex(p => p.id === editingPhotoId || p._id === editingPhotoId);
-      if (idx !== -1) {
-        photos[idx] = { ...photos[idx], ...payload };
-      } else {
-        photos.unshift({ id: editingPhotoId, ...payload });
-      }
-      unmarkDeletedPhoto(editingPhotoId);
-    } else {
-      const newId = 'photo_' + Date.now();
-      photos.unshift({ id: newId, ...payload });
-      unmarkDeletedPhoto(newId);
-    }
-    saveLocalGallery(photos);
+  // Prevent double submissions
+  setButtonLoading(submitBtn, true, editingPhotoId ? 'Updating photo…' : 'Uploading photo…', editingPhotoId ? 'Update Photo' : 'Save Photo');
+
+  // If uploading base64, display real upload progress bar
+  const isBase64Upload = imageUrl && imageUrl.startsWith('data:');
+  if (isBase64Upload) {
+    showUploadProgress('photoUploadProgress', 'photoUploadLabel', 'photoUploadPercent', 'photoProgressBar', 'photoUploadHint', 'Uploading campus photo…');
   }
 
-  closePhotoModal();
-  loadGallery();
-  loadStats();
+  try {
+    const url = editingPhotoId ? `${API}/admin/gallery/${editingPhotoId}` : `${API}/admin/gallery`;
+    const method = editingPhotoId ? 'PUT' : 'POST';
+
+    const result = await apiRequestWithProgress({
+      url,
+      method,
+      data: payload,
+      token: adminToken,
+      onProgress: (percent, loaded, total) => {
+        updateUploadProgress('photoUploadPercent', 'photoProgressBar', 'photoUploadHint', percent, loaded, total);
+      }
+    });
+
+    if (result.ok && result.data && result.data.success) {
+      if (isBase64Upload) {
+        completeUploadProgress('photoUploadPercent', 'photoProgressBar', 'photoUploadHint', 'Upload complete ✓');
+      }
+      showToast(editingPhotoId ? 'Photo updated successfully' : 'Photo uploaded and published successfully ✓', 'success');
+      hideUploadProgress('photoUploadProgress', 600);
+      closePhotoModal();
+
+      // Authoritative re-fetch from MongoDB
+      await loadGallery();
+      await loadStats();
+
+      // Broadcast update to public gallery & tabs
+      window.dispatchEvent(new CustomEvent('podhigai:galleryUpdated'));
+    } else {
+      if (isBase64Upload) {
+        failUploadProgress('photoUploadProgress', 'photoUploadPercent', 'photoProgressBar', 'photoUploadHint', result.message || 'Save failed.');
+      }
+      showToast(result.message || 'Failed to save photo on server.', 'error');
+    }
+  } catch (err) {
+    console.error('Gallery save error:', err);
+    if (isBase64Upload) {
+      failUploadProgress('photoUploadProgress', 'photoUploadPercent', 'photoProgressBar', 'photoUploadHint', 'Upload failed. Check backend connection.');
+    }
+    showToast(err.message || 'Network error saving photo.', 'error');
+  } finally {
+    setButtonLoading(submitBtn, false, '', editingPhotoId ? 'Update Photo' : 'Save Photo');
+  }
 }
 
 function openDeletePhotoModal(id) {
@@ -2146,31 +2444,31 @@ function closeDeletePhotoModal() {
 async function confirmDeletePhoto() {
   if (!deletePhotoTargetId) return;
   const targetId = deletePhotoTargetId;
+  const btn = document.getElementById('confirmDeletePhotoBtn');
+  setButtonLoading(btn, true, 'Deleting…', 'Delete Photo');
 
-  // 1. Permanently track as deleted so no default array or cache can resurrect it
-  trackDeletedPhoto(targetId);
-
-  // 2. Delete immediately from local storage & broadcast to website
-  const photos = getLocalGallery();
-  const filtered = photos.filter(p => p.id !== targetId && p._id !== targetId);
-  saveLocalGallery(filtered);
-
-  // 3. Delete from backend MongoDB
   try {
-    const res = await fetch(`${API}/admin/gallery/${targetId}`, {
+    const result = await apiRequestWithProgress({
+      url: `${API}/admin/gallery/${targetId}`,
       method: 'DELETE',
-      headers: { 'Authorization': `Bearer ${adminToken}` }
+      token: adminToken
     });
-    if (!res.ok) {
-      console.warn('Delete gallery photo API response status:', res.status);
+
+    if (result.ok) {
+      showToast('Photo deleted successfully', 'success', 2500);
+    } else {
+      showToast(result.message || 'Failed to delete photo on server.', 'warning');
     }
   } catch (err) {
-    console.warn('Delete gallery photo API network notice:', err);
+    console.warn('Delete gallery photo API notice:', err);
+    showToast('Network error deleting photo.', 'error');
+  } finally {
+    setButtonLoading(btn, false, '', 'Delete Photo');
+    closeDeletePhotoModal();
+    await loadGallery();
+    await loadStats();
+    window.dispatchEvent(new CustomEvent('podhigai:galleryUpdated'));
   }
-
-  closeDeletePhotoModal();
-  loadGallery();
-  loadStats();
 }
 
 // ── HERO CHAIRMAN SETTINGS MANAGEMENT ────────────────────────
@@ -2198,9 +2496,13 @@ function getStoredChairmanSettings() {
 async function loadChairmanSettings() {
   currentChairmanData = getStoredChairmanSettings();
 
-  // Try fetching from backend if available
+  // Try fetching fresh data from backend with no-store
   try {
-    const res = await fetch(`${API}/chairman`);
+    const res = await fetch(`${API}/chairman`, {
+      headers: { 'Cache-Control': 'no-cache, no-store' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.chairman) {
@@ -2210,6 +2512,7 @@ async function loadChairmanSettings() {
     }
   } catch (e) {
     // Offline / fallback to localStorage
+    console.warn('Chairman settings API fetch notice:', e.message);
   }
 
   // Populate form
@@ -2254,17 +2557,32 @@ function handleChairmanFileChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
+  if (!file.type.startsWith('image/')) {
+    showToast('Please upload a valid image file (PNG, JPG, JPEG, WEBP).', 'warning');
+    return;
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    showToast('Image is too large. Please select an image under 15MB.', 'warning');
+    return;
+  }
+
   const fileNameEl = document.getElementById('chPhotoFileName');
   if (fileNameEl) fileNameEl.textContent = file.name;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    const base64 = e.target.result;
+  compressImageFile(file, 800, 800, 0.88, (compressed) => {
     const imgUrlInput = document.getElementById('chImageUrlInput');
-    if (imgUrlInput) imgUrlInput.value = base64;
+    if (imgUrlInput) imgUrlInput.value = compressed;
     updateChairmanLivePreview();
-  };
-  reader.readAsDataURL(file);
+  }, () => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target.result;
+      const imgUrlInput = document.getElementById('chImageUrlInput');
+      if (imgUrlInput) imgUrlInput.value = base64;
+      updateChairmanLivePreview();
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function handleSaveChairman(e) {
@@ -2280,50 +2598,64 @@ async function handleSaveChairman(e) {
   const image = imgUrlInput?.value.trim() || 'images/chairman.png';
 
   if (!name) {
-    alert('Please enter the Chairman full name.');
+    showToast('Please enter the Chairman full name.', 'warning');
     return;
   }
 
   const updated = { name, role, image };
   currentChairmanData = updated;
 
-  // 1. Save to LocalStorage
-  localStorage.setItem(CHAIRMAN_STORAGE_KEY, JSON.stringify(updated));
+  setButtonLoading(saveBtn, true, 'Saving…', 'Save Changes');
 
-  // 2. Dispatch custom event so other components / open tabs update immediately
-  window.dispatchEvent(new CustomEvent('podhigai:chairmanUpdated', { detail: updated }));
+  const isBase64Upload = image && image.startsWith('data:');
+  if (isBase64Upload) {
+    showUploadProgress('chUploadProgress', 'chUploadLabel', 'chUploadPercent', 'chProgressBar', 'chUploadHint', 'Uploading chairman portrait image…');
+  }
 
-  // 3. Save to backend API if available
   try {
-    await fetch(`${API}/admin/chairman`, {
+    const result = await apiRequestWithProgress({
+      url: `${API}/admin/chairman`,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${adminToken}`
-      },
-      body: JSON.stringify(updated)
+      data: updated,
+      token: adminToken,
+      onProgress: (percent, loaded, total) => {
+        updateUploadProgress('chUploadPercent', 'chProgressBar', 'chUploadHint', percent, loaded, total);
+      }
     });
+
+    if (result.ok && result.data && result.data.success) {
+      if (isBase64Upload) {
+        completeUploadProgress('chUploadPercent', 'chProgressBar', 'chUploadHint', 'Image uploaded & saved ✓');
+      }
+      localStorage.setItem(CHAIRMAN_STORAGE_KEY, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('podhigai:chairmanUpdated', { detail: updated }));
+      showToast('Chairman information updated successfully ✓', 'success');
+      hideUploadProgress('chUploadProgress', 600);
+
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.style.background = '#ECFDF5';
+        statusEl.style.color = '#065F46';
+        statusEl.style.border = '1px solid #A7F3D0';
+        statusEl.innerHTML = '✅ <strong>Saved!</strong> Chairman details successfully updated in hero section.';
+        setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4500);
+      }
+
+      await loadChairmanSettings();
+    } else {
+      if (isBase64Upload) {
+        failUploadProgress('chUploadProgress', 'chUploadPercent', 'chProgressBar', 'chUploadHint', result.message || 'Save failed.');
+      }
+      showToast(result.message || 'Failed to save chairman settings on server.', 'error');
+    }
   } catch (err) {
-    // Offline mode, localStorage is sufficient
-  }
-
-  if (statusEl) {
-    statusEl.style.display = 'block';
-    statusEl.style.background = '#ECFDF5';
-    statusEl.style.color = '#065F46';
-    statusEl.style.border = '1px solid #A7F3D0';
-    statusEl.innerHTML = '✅ <strong>Saved!</strong> Chairman details successfully updated in hero section.';
-    setTimeout(() => {
-      if (statusEl) statusEl.style.display = 'none';
-    }, 4500);
-  }
-
-  if (saveBtn) {
-    const oldHtml = saveBtn.innerHTML;
-    saveBtn.innerHTML = '<span>✓ Saved Successfully</span>';
-    setTimeout(() => {
-      saveBtn.innerHTML = oldHtml;
-    }, 2500);
+    console.error('Chairman save error:', err);
+    if (isBase64Upload) {
+      failUploadProgress('chUploadProgress', 'chUploadPercent', 'chProgressBar', 'chUploadHint', 'Upload failed. Check backend connection.');
+    }
+    showToast(err.message || 'Network error saving chairman details.', 'error');
+  } finally {
+    setButtonLoading(saveBtn, false, '', 'Save Changes');
   }
 }
 
@@ -2359,4 +2691,310 @@ function handleResetChairman() {
     }, 3500);
   }
 }
+
+// ── Safe Reviews Loader (Preserves Compatibility) ─────────────
+async function loadReviews() {
+  // If reviews view is requested, gracefully route to messages or show status
+  if (currentView === 'reviews') {
+    showMessagesPanel();
+  }
+}
+
+// ── Global Window Bindings for Inline HTML Handlers ───────────
+window.checkBackendHealth = checkBackendHealth;
+window.refreshDashboard = refreshDashboard;
+window.refreshMessages = refreshMessages;
+window.handleLogin = handleLogin;
+window.handleLogout = handleLogout;
+window.showMessagesPanel = showMessagesPanel;
+window.showEventsPanel = showEventsPanel;
+window.showGalleryPanel = showGalleryPanel;
+window.showChairmanPanel = showChairmanPanel;
+window.toggleSidebar = toggleSidebar;
+window.closeSidebar = closeSidebar;
+window.selectFilter = selectFilter;
+window.clearFilters = clearFilters;
+window.openDeleteModal = openDeleteModal;
+window.closeDeleteModal = closeDeleteModal;
+window.confirmDelete = confirmDelete;
+window.handleMarkReadCheckbox = handleMarkReadCheckbox;
+window.goPage = goPage;
+window.openAddEventModal = openAddEventModal;
+window.openEditEventModal = openEditEventModal;
+window.closeEventModal = closeEventModal;
+window.handleSaveEvent = handleSaveEvent;
+window.togglePublishEvent = togglePublishEvent;
+window.openDeleteEventModal = openDeleteEventModal;
+window.closeDeleteEventModal = closeDeleteEventModal;
+window.confirmDeleteEvent = confirmDeleteEvent;
+window.loadEvents = loadEvents;
+window.openAddPhotoModal = openAddPhotoModal;
+window.openEditPhotoModal = openEditPhotoModal;
+window.closePhotoModal = closePhotoModal;
+window.handleSavePhoto = handleSavePhoto;
+window.openDeletePhotoModal = openDeletePhotoModal;
+window.closeDeletePhotoModal = closeDeletePhotoModal;
+window.confirmDeletePhoto = confirmDeletePhoto;
+window.shiftPhotoOrder = shiftPhotoOrder;
+window.selectGalleryCategory = selectGalleryCategory;
+window.loadGallery = loadGallery;
+window.handleChairmanFileChange = handleChairmanFileChange;
+window.handleSaveChairman = handleSaveChairman;
+window.handleResetChairman = handleResetChairman;
+window.updateChairmanLivePreview = updateChairmanLivePreview;
+window.loadChairmanSettings = loadChairmanSettings;
+window.loadReviews = loadReviews;
+
+/* ==========================================================================
+   TRUE CROSS-DEVICE REAL-TIME SYNCHRONIZATION FOR ADMIN PANEL
+   (Socket.IO Real-Time Push + Unsaved Edit Protection + Connection Status)
+   ========================================================================== */
+const ADMIN_SOCKET_URL = API.replace(/\/api$/, '');
+let adminRealTimeSocket = null;
+let adminHasConnectedOnce = false;
+
+function createDebouncedAdminTask(fn, waitMs = 250) {
+  let timeout = null;
+  return function (...args) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => {
+      timeout = null;
+      fn(...args);
+    }, waitMs);
+  };
+}
+
+const debouncedAdminRefreshEvents = createDebouncedAdminTask(async () => {
+  console.log('🔄 [Admin RealTime] Fetching latest events from MongoDB...');
+  await loadEvents();
+}, 200);
+
+const debouncedAdminRefreshGallery = createDebouncedAdminTask(async () => {
+  console.log('🔄 [Admin RealTime] Fetching latest gallery from MongoDB...');
+  await loadGallery();
+}, 200);
+
+const debouncedAdminRefreshMessages = createDebouncedAdminTask(async () => {
+  console.log('🔄 [Admin RealTime] Fetching latest messages from MongoDB...');
+  await loadMessages();
+}, 200);
+
+const debouncedAdminRefreshStats = createDebouncedAdminTask(async () => {
+  await loadStats();
+}, 200);
+
+const debouncedAdminRefreshReviews = createDebouncedAdminTask(async () => {
+  console.log('🔄 [Admin RealTime] Fetching latest reviews from MongoDB...');
+  await loadReviews();
+}, 200);
+
+const debouncedAdminRefreshChairman = createDebouncedAdminTask(async () => {
+  console.log('🔄 [Admin RealTime] Fetching latest chairman settings from MongoDB...');
+  await loadChairmanSettings();
+}, 200);
+
+function updateLiveSyncBadge(status) {
+  const badge = document.getElementById('liveSyncBadge');
+  if (!badge) return;
+  const text = badge.querySelector('.health-text');
+
+  if (status === 'connected') {
+    badge.className = 'health-badge connected';
+    badge.title = 'Live Sync Active (Connected to Backend Real-Time Push)';
+    if (text) text.textContent = '● Live Sync Connected';
+  } else if (status === 'reconnecting') {
+    badge.className = 'health-badge checking';
+    badge.title = 'Reconnecting to Real-Time Push Server...';
+    if (text) text.textContent = '○ Reconnecting...';
+  } else if (status === 'offline') {
+    badge.className = 'health-badge offline';
+    badge.title = 'Real-Time Sync Disconnected';
+    if (text) text.textContent = '● Offline';
+  }
+}
+
+function isEventFormDirty() {
+  const modal = document.getElementById('eventModal');
+  const isModalOpen = modal && modal.style.display !== 'none' && modal.style.display !== '';
+  return Boolean(editingEventId || isModalOpen);
+}
+
+function isPhotoFormDirty() {
+  const modal = document.getElementById('photoModal');
+  const isModalOpen = modal && modal.style.display !== 'none' && modal.style.display !== '';
+  return Boolean(editingPhotoId || isModalOpen);
+}
+
+function showConflictBanner(type) {
+  const banner = document.getElementById('remoteConflictBanner');
+  const title = document.getElementById('remoteConflictTitle');
+  const desc = document.getElementById('remoteConflictDesc');
+  const refreshBtn = document.getElementById('remoteConflictRefreshBtn');
+  const keepBtn = document.getElementById('remoteConflictKeepBtn');
+
+  if (!banner) return;
+
+  if (type === 'events') {
+    if (title) title.textContent = 'Events were updated on another device.';
+    if (desc) desc.textContent = 'You are currently editing an event. Would you like to keep your unsaved edits or refresh with the latest server data?';
+    if (refreshBtn) {
+      refreshBtn.onclick = () => {
+        closeEventModal();
+        debouncedAdminRefreshEvents();
+        debouncedAdminRefreshStats();
+        banner.style.display = 'none';
+        showToast('Events reloaded with latest server data', 'info');
+      };
+    }
+  } else if (type === 'gallery') {
+    if (title) title.textContent = 'Gallery was updated on another device.';
+    if (desc) desc.textContent = 'You are currently editing a campus photo. Would you like to keep your unsaved edits or refresh with the latest server data?';
+    if (refreshBtn) {
+      refreshBtn.onclick = () => {
+        closePhotoModal();
+        debouncedAdminRefreshGallery();
+        debouncedAdminRefreshStats();
+        banner.style.display = 'none';
+        showToast('Gallery reloaded with latest server data', 'info');
+      };
+    }
+  }
+
+  if (keepBtn) {
+    keepBtn.onclick = () => {
+      banner.style.display = 'none';
+      showToast('Keeping your unsaved changes', 'warning');
+    };
+  }
+
+  banner.style.display = 'block';
+}
+
+function initAdminRealTimeSync() {
+  if (typeof io === 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+    script.async = true;
+    script.onload = () => initAdminRealTimeSync();
+    document.head.appendChild(script);
+    return;
+  }
+
+  if (adminRealTimeSocket) return; // Exactly ONE active connection
+
+  try {
+    adminRealTimeSocket = io(ADMIN_SOCKET_URL, {
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      transports: ['websocket', 'polling']
+    });
+
+    adminRealTimeSocket.on('connect', () => {
+      console.log(`🔌 [Admin Live Sync] Connected: ${adminRealTimeSocket.id}`);
+      updateLiveSyncBadge('connected');
+
+      if (adminHasConnectedOnce) {
+        showToast('Live sync restored', 'success', 3000);
+        console.log('🔄 [Admin Live Sync] Catching up with latest MongoDB state...');
+        debouncedAdminRefreshStats();
+        debouncedAdminRefreshMessages();
+        if (!isEventFormDirty()) debouncedAdminRefreshEvents();
+        if (!isPhotoFormDirty()) debouncedAdminRefreshGallery();
+        debouncedAdminRefreshReviews();
+        debouncedAdminRefreshChairman();
+      }
+      adminHasConnectedOnce = true;
+    });
+
+    adminRealTimeSocket.on('disconnect', (reason) => {
+      console.warn(`🔌 [Admin Live Sync] Disconnected: ${reason}`);
+      updateLiveSyncBadge('offline');
+    });
+
+    adminRealTimeSocket.on('reconnect_attempt', () => {
+      updateLiveSyncBadge('reconnecting');
+    });
+
+    adminRealTimeSocket.on('reconnect', () => {
+      updateLiveSyncBadge('connected');
+      showToast('Live sync restored', 'success', 3000);
+      debouncedAdminRefreshStats();
+      debouncedAdminRefreshMessages();
+      if (!isEventFormDirty()) debouncedAdminRefreshEvents();
+      if (!isPhotoFormDirty()) debouncedAdminRefreshGallery();
+      debouncedAdminRefreshReviews();
+      debouncedAdminRefreshChairman();
+    });
+
+    adminRealTimeSocket.on('connect_error', () => {
+      updateLiveSyncBadge('reconnecting');
+    });
+
+    // ── Real-Time Event Handlers ─────────────────────────────
+    adminRealTimeSocket.on('events:updated', () => {
+      if (isEventFormDirty()) {
+        showConflictBanner('events');
+      } else {
+        debouncedAdminRefreshEvents();
+        debouncedAdminRefreshStats();
+      }
+    });
+
+    adminRealTimeSocket.on('gallery:updated', () => {
+      if (isPhotoFormDirty()) {
+        showConflictBanner('gallery');
+      } else {
+        debouncedAdminRefreshGallery();
+        debouncedAdminRefreshStats();
+      }
+    });
+
+    adminRealTimeSocket.on('messages:updated', () => {
+      debouncedAdminRefreshMessages();
+      debouncedAdminRefreshStats();
+    });
+
+    adminRealTimeSocket.on('reviews:updated', () => {
+      debouncedAdminRefreshReviews();
+      debouncedAdminRefreshStats();
+    });
+
+    adminRealTimeSocket.on('chairman:updated', () => {
+      debouncedAdminRefreshChairman();
+    });
+
+    // Handle browser network online/offline events
+    window.addEventListener('online', () => {
+      console.log('🌐 [Admin Live Sync] Device online. Restoring live sync...');
+      if (!adminRealTimeSocket.connected) {
+        adminRealTimeSocket.connect();
+      }
+      debouncedAdminRefreshStats();
+      debouncedAdminRefreshMessages();
+      if (!isEventFormDirty()) debouncedAdminRefreshEvents();
+      if (!isPhotoFormDirty()) debouncedAdminRefreshGallery();
+      debouncedAdminRefreshReviews();
+      debouncedAdminRefreshChairman();
+    });
+
+    window.addEventListener('offline', () => {
+      updateLiveSyncBadge('offline');
+    });
+
+  } catch (err) {
+    console.error('Admin real-time sync failed to initialize:', err);
+    updateLiveSyncBadge('offline');
+  }
+}
+
+// Initialize admin sync when script loads or DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAdminRealTimeSync);
+} else {
+  initAdminRealTimeSync();
+}
+
 

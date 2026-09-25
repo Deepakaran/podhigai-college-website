@@ -29,3 +29,6 @@ serviceAccount*.json
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Firebase local metadata
+.firebase/

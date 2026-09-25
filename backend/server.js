@@ -11,12 +11,15 @@ try {
 } catch (_) {}
 
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3001;
 
 // ── CORS Configuration ─────────────────────────────────────────
@@ -33,29 +36,88 @@ const envAllowedOrigins = process.env.CORS_ORIGINS
   : [];
 const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...envAllowedOrigins])];
 
+const isOriginAllowed = (origin) => {
+  if (!origin) return true;
+  if (
+    allowedOrigins.includes(origin) ||
+    origin.endsWith('.web.app') ||
+    origin.endsWith('.firebaseapp.com')
+  ) {
+    return true;
+  }
+  if (process.env.NODE_ENV !== 'production' && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+    return true;
+  }
+  return false;
+};
+
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests (e.g. server-to-server, curl, Cloud Run health probes)
-    if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.web.app') ||
-      origin.endsWith('.firebaseapp.com')
-    ) {
-      return callback(null, true);
-    }
-    // Allow any localhost port in development
-    if (process.env.NODE_ENV !== 'production' && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
     return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Cache-Control', 'Pragma']
 }));
+
+// ── Socket.IO Real-Time Server Configuration ──────────────────
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Socket CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+    methods: ['GET', 'POST']
+  },
+  pingTimeout: 30000,
+  pingInterval: 25000
+});
+
+io.on('connection', (socket) => {
+  console.log(`🔌 [Socket.IO] Client connected: ${socket.id} (total: ${io.engine.clientsCount})`);
+  socket.on('disconnect', (reason) => {
+    console.log(`🔌 [Socket.IO] Client disconnected: ${socket.id} (${reason})`);
+  });
+});
+
+/**
+ * Broadcasts a lightweight real-time notification to all connected clients.
+ * NOTE: MongoDB is the authoritative source of truth. Socket events ONLY notify
+ * clients to fetch fresh data from the REST API. Never emit entire collections.
+ */
+function broadcastUpdate(type, action = 'updated', meta = {}) {
+  try {
+    const payload = { type, action, timestamp: Date.now(), ...meta };
+    io.emit(`${type}:${action}`, payload);
+    if (action !== 'updated') {
+      io.emit(`${type}:updated`, payload);
+    }
+    console.log(`📡 [Socket.IO] Broadcast ${type}:${action}`);
+  } catch (err) {
+    console.error('Socket broadcast error:', err);
+  }
+}
+
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// ── Cache Prevention for Dynamic API Endpoints ────────────────
+// Ensures browsers, CDNs (e.g. Render/Cloudflare), and proxies never cache live data
+app.use('/api', (req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+  next();
+});
 
 // Rate-limit: max 10 contact submissions per 15 minutes per IP
 const contactLimiter = rateLimit({
@@ -513,6 +575,7 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
     await contact.save();
 
     console.log(`📩  New contact from: ${name} <${email}>`);
+    broadcastUpdate('messages', 'created', { id: contact._id });
 
     res.status(201).json({
       success: true,
@@ -606,6 +669,7 @@ app.patch('/api/admin/messages/:id/read', async (req, res) => {
 
   try {
     await Contact.findByIdAndUpdate(req.params.id, { isRead: true });
+    broadcastUpdate('messages', 'read', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -619,6 +683,7 @@ app.delete('/api/admin/messages/:id', async (req, res) => {
   try {
     const deleted = await Contact.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ success: false, message: 'Message not found.' });
+    broadcastUpdate('messages', 'deleted', { id: req.params.id });
     res.json({ success: true, message: 'Message deleted.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -746,6 +811,7 @@ app.post('/api/admin/events', async (req, res) => {
 
     await event.save();
     console.log(`🎉 New event created: "${title}" [${eventId}]`);
+    broadcastUpdate('events', 'created', { id: event.id });
     res.status(201).json({ success: true, message: 'Event created successfully.', event });
   } catch (err) {
     console.error('Create event error:', err);
@@ -782,6 +848,7 @@ app.put('/api/admin/events/:id', async (req, res) => {
     );
 
     if (!updated) return res.status(404).json({ success: false, message: 'Event not found.' });
+    broadcastUpdate('events', 'updated', { id: updated.id });
     res.json({ success: true, message: 'Event updated successfully.', event: updated });
   } catch (err) {
     console.error('Update event error:', err);
@@ -798,6 +865,7 @@ app.delete('/api/admin/events/:id', async (req, res) => {
       $or: [{ id: eventId }, { _id: mongoose.isValidObjectId(eventId) ? eventId : null }]
     });
     if (!deleted) return res.status(404).json({ success: false, message: 'Event not found.' });
+    broadcastUpdate('events', 'deleted', { id: eventId });
     res.json({ success: true, message: 'Event deleted successfully.' });
   } catch (err) {
     console.error('Delete event error:', err);
@@ -827,6 +895,7 @@ app.patch('/api/admin/events/:id/toggle', async (req, res) => {
     }
 
     await event.save();
+    broadcastUpdate('events', 'toggled', { id: event.id, field });
     res.json({ success: true, event });
   } catch (err) {
     console.error('Toggle event error:', err);
@@ -911,6 +980,7 @@ app.post('/api/admin/gallery', async (req, res) => {
 
     await photo.save();
     console.log(`📸 New campus photo added: "${title}" [${photoId}] in category [${category}]`);
+    broadcastUpdate('gallery', 'created', { id: photo.id });
     res.status(201).json({ success: true, message: 'Photo added successfully.', photo });
   } catch (err) {
     console.error('Create gallery photo error:', err);
@@ -936,6 +1006,7 @@ app.put('/api/admin/gallery/reorder', async (req, res) => {
       await GalleryPhoto.bulkWrite(bulkOps);
     }
     console.log(`📸 Bulk reordered ${orders.length} campus photos`);
+    broadcastUpdate('gallery', 'reordered');
     res.json({ success: true, message: 'Photo display orders updated successfully.' });
   } catch (err) {
     console.error('Reorder gallery photos error:', err);
@@ -969,6 +1040,7 @@ app.put('/api/admin/gallery/:id', async (req, res) => {
 
     if (!updated) return res.status(404).json({ success: false, message: 'Photo not found.' });
     console.log(`📸 Campus photo updated: "${title}" [${photoId}]`);
+    broadcastUpdate('gallery', 'updated', { id: updated.id });
     res.json({ success: true, message: 'Photo updated successfully.', photo: updated });
   } catch (err) {
     console.error('Update gallery photo error:', err);
@@ -986,6 +1058,7 @@ app.delete('/api/admin/gallery/:id', async (req, res) => {
     });
     if (!deleted) return res.status(404).json({ success: false, message: 'Photo not found.' });
     console.log(`🗑️ Campus photo deleted: [${photoId}]`);
+    broadcastUpdate('gallery', 'deleted', { id: photoId });
     res.json({ success: true, message: 'Photo deleted successfully.' });
   } catch (err) {
     console.error('Delete gallery photo error:', err);
@@ -1042,6 +1115,7 @@ app.post('/api/reviews', reviewLimiter, async (req, res) => {
     });
     await review.save();
     console.log(`⭐ New review from: ${name} (${rating} stars - ${title})`);
+    broadcastUpdate('reviews', 'created', { id: review._id });
     res.status(201).json({ success: true, message: 'Review submitted successfully.', review });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -1077,6 +1151,7 @@ app.delete('/api/admin/reviews/:id', async (req, res) => {
   try {
     const deleted = await Review.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ success: false, message: 'Review not found.' });
+    broadcastUpdate('reviews', 'deleted', { id: req.params.id });
     res.json({ success: true, message: 'Review deleted.' });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -1091,6 +1166,7 @@ app.patch('/api/admin/reviews/:id/approve', async (req, res) => {
     if (!review) return res.status(404).json({ success: false, message: 'Review not found.' });
     review.approved = !review.approved;
     await review.save();
+    broadcastUpdate('reviews', 'approved', { id: review._id });
     res.json({ success: true, approved: review.approved });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
@@ -1142,8 +1218,10 @@ app.post('/api/admin/chairman', async (req, res) => {
         { name: memChairman.name, role: memChairman.role, image: memChairman.image },
         { upsert: true, new: true }
       ).lean();
+      broadcastUpdate('chairman', 'updated');
       return res.json({ success: true, chairman: updated });
     } catch (dbErr) {
+      broadcastUpdate('chairman', 'updated');
       return res.json({ success: true, chairman: memChairman });
     }
   } catch (err) {
@@ -1152,7 +1230,7 @@ app.post('/api/admin/chairman', async (req, res) => {
 });
 
 // ── Start server ──────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀  Podhigai Contact API`);
   console.log(`    → Port     : ${PORT}`);
   console.log(`    → Health   : http://0.0.0.0:${PORT}/api/health`);
