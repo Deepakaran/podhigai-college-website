@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="100%" height="100%">
+  <!-- Circular Outer Glow Ring -->
+  <circle cx="80" cy="72" r="56" fill="none" stroke="#F59E0B" stroke-width="4" opacity="0.9" />
+  <circle cx="80" cy="72" r="52" fill="none" stroke="#FEF3C7" stroke-width="1.5" />
+  
+  <!-- Inner White Canvas -->
+  <circle cx="80" cy="72" r="50" fill="#FFFFFF" />
+  
+  <!-- Flower / Sunburst Radiating Petals (Reference Style) -->
+  <g transform="translate(80, 72)">
+    <!-- 8 Elegant Curved Green Petals -->
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#22C55E" opacity="0.95" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#16A34A" opacity="0.9" transform="rotate(45)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#22C55E" opacity="0.95" transform="rotate(90)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#16A34A" opacity="0.9" transform="rotate(135)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#22C55E" opacity="0.95" transform="rotate(180)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#16A34A" opacity="0.9" transform="rotate(225)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#22C55E" opacity="0.95" transform="rotate(270)" />
+    <path d="M0,0 C-8,-16 -12,-32 0,-40 C12,-32 8,-16 0,0" fill="#16A34A" opacity="0.9" transform="rotate(315)" />
+    
+    <!-- Central Pistil Gold Core -->
+    <circle cx="0" cy="0" r="7" fill="#F59E0B" />
+    <circle cx="0" cy="0" r="3.5" fill="#FFFFFF" />
+  </g>
+  
+  <!-- College Brand Acronym Text -->
+  <text x="80" y="146" font-family="'Plus Jakarta Sans', -apple-system, sans-serif" font-size="16" font-weight="900" fill="#15803D" text-anchor="middle" letter-spacing="3">PCET</text>
+</svg>

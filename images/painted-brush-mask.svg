@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="100%" height="100%">
+  <defs>
+    <!-- Filter for organic rough watercolor texture -->
+    <filter id="brushTurbulence" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" result="noise" />
+      <feDisplacementMap in="SourceGraphic" in2="noise" scale="18" xChannelSelector="R" yChannelSelector="G" />
+    </filter>
+    
+    <linearGradient id="brushGradH" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000" stop-opacity="0" />
+      <stop offset="6%" stop-color="#000" stop-opacity="0.8" />
+      <stop offset="12%" stop-color="#000" stop-opacity="1" />
+      <stop offset="88%" stop-color="#000" stop-opacity="1" />
+      <stop offset="94%" stop-color="#000" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#000" stop-opacity="0" />
+    </linearGradient>
+    
+    <linearGradient id="brushGradV" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#000" stop-opacity="0" />
+      <stop offset="8%" stop-color="#000" stop-opacity="0.9" />
+      <stop offset="15%" stop-color="#000" stop-opacity="1" />
+      <stop offset="85%" stop-color="#000" stop-opacity="1" />
+      <stop offset="93%" stop-color="#000" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#000" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Main Organic Watercolor Base -->
+  <g filter="url(#brushTurbulence)" fill="#000000">
+    <!-- Center Core Fill -->
+    <rect x="70" y="50" width="1060" height="490" rx="36" />
+    
+    <!-- Top Horizontal Paint Strokes -->
+    <path d="M 40,75 Q 300,35 600,55 T 1160,65 L 1150,110 Q 600,90 45,115 Z" opacity="0.95" />
+    <path d="M 120,40 Q 450,20 800,35 T 1100,45 L 1080,85 Q 500,65 110,80 Z" opacity="0.85" />
+    <path d="M 200,25 Q 550,10 900,25 Q 1050,30 1140,40 L 1120,70 Q 600,45 190,60 Z" opacity="0.75" />
+    <path d="M 80,60 C 250,25 450,30 750,45 C 950,55 1050,40 1170,55 L 1160,95 C 900,80 500,70 70,95 Z" opacity="0.9" />
+    
+    <!-- Bottom Horizontal Paint Strokes & Splatters -->
+    <path d="M 40,490 Q 300,535 600,520 T 1160,505 L 1150,455 Q 600,480 45,460 Z" opacity="0.95" />
+    <path d="M 100,525 Q 450,565 850,545 T 1120,530 L 1100,485 Q 550,510 90,495 Z" opacity="0.85" />
+    <path d="M 180,545 Q 550,580 920,560 Q 1040,550 1140,540 L 1120,500 Q 600,530 170,515 Z" opacity="0.75" />
+    <path d="M 60,505 C 260,555 500,545 800,530 C 1000,520 1100,540 1180,515 L 1170,470 C 900,495 500,505 50,475 Z" opacity="0.9" />
+    
+    <!-- Left Feathery Brush Bristles -->
+    <path d="M 75,90 C 25,180 15,320 65,510 L 115,500 C 65,320 75,180 115,100 Z" opacity="0.9" />
+    <path d="M 50,150 C 10,240 5,360 45,450 L 85,440 C 45,360 50,240 85,160 Z" opacity="0.75" />
+    <path d="M 25,220 C 0,280 0,340 30,400 L 65,390 C 35,340 35,280 65,230 Z" opacity="0.6" />
+    
+    <!-- Right Feathery Brush Bristles -->
+    <path d="M 1125,90 C 1175,180 1185,320 1135,510 L 1085,500 C 1135,320 1125,180 1085,100 Z" opacity="0.9" />
+    <path d="M 1150,150 C 1190,240 1195,360 1155,450 L 1115,440 C 1155,360 1150,240 1115,160 Z" opacity="0.75" />
+    <path d="M 1175,220 C 1200,280 1200,340 1170,400 L 1135,390 C 1165,340 1165,280 1135,230 Z" opacity="0.6" />
+    
+    <!-- Artistic Paint Splatter Clusters -->
+    <circle cx="28" cy="180" r="5" opacity="0.8" />
+    <circle cx="18" cy="210" r="3" opacity="0.7" />
+    <circle cx="34" cy="245" r="4.5" opacity="0.8" />
+    <circle cx="15" cy="380" r="4" opacity="0.7" />
+    <circle cx="30" cy="420" r="5.5" opacity="0.85" />
+    <circle cx="1172" cy="175" r="5.5" opacity="0.8" />
+    <circle cx="1185" cy="215" r="3.5" opacity="0.7" />
+    <circle cx="1168" cy="260" r="4" opacity="0.8" />
+    <circle cx="1182" cy="370" r="4.5" opacity="0.75" />
+    <circle cx="1165" cy="425" r="5" opacity="0.8" />
+    
+    <circle cx="280" cy="18" r="4" opacity="0.75" />
+    <circle cx="480" cy="12" r="5.5" opacity="0.8" />
+    <circle cx="720" cy="14" r="4.5" opacity="0.7" />
+    <circle cx="940" cy="20" r="5" opacity="0.8" />
+    
+    <circle cx="260" cy="578" r="5" opacity="0.8" />
+    <circle cx="490" cy="585" r="6" opacity="0.85" />
+    <circle cx="750" cy="580" r="5" opacity="0.75" />
+    <circle cx="980" cy="572" r="4.5" opacity="0.8" />
+  </g>
+</svg>

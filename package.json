@@ -1,0 +1,16 @@
+{
+  "name": "podhigai-site",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "http-server . -p 5500 -c-1 --cors",
+    "serve": "http-server . -p 5500 -c-1 --cors",
+    "migrate": "npm --prefix backend run migrate",
+    "pm2:start": "pm2 start backend/ecosystem.config.js",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:status": "pm2 status"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  }
+}

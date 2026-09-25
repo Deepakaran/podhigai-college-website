@@ -1,0 +1,213 @@
+/* ==========================================================================
+   PODHIGAI COLLEGE OF ENGINEERING & TECHNOLOGY
+   animations.css – Hardware-Accelerated Scroll Reveals & Alive AI Robot System
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. SCROLL REVEALS (IntersectionObserver Transitions)
+   -------------------------------------------------------------------------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.visible, .reveal.pcet-in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-left {
+  opacity: 0;
+  transform: translateX(-32px);
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal-left.visible, .reveal-left.pcet-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-right {
+  opacity: 0;
+  transform: translateX(32px);
+  transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal-right.visible, .reveal-right.pcet-in {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.reveal-scale {
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+.reveal-scale.visible, .reveal-scale.pcet-in {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Stagger Delays */
+.delay-50  { transition-delay: 50ms; }
+.delay-100 { transition-delay: 100ms; }
+.delay-150 { transition-delay: 150ms; }
+.delay-200 { transition-delay: 200ms; }
+.delay-250 { transition-delay: 250ms; }
+.delay-300 { transition-delay: 300ms; }
+.delay-350 { transition-delay: 350ms; }
+.delay-400 { transition-delay: 400ms; }
+.delay-500 { transition-delay: 500ms; }
+
+/* --------------------------------------------------------------------------
+   2. SIGNATURE 3D ROBOT AI CAMPUS ASSISTANT ANIMATIONS
+   -------------------------------------------------------------------------- */
+
+/* Natural Organic Floating Cycle for 3D Robot Body */
+@keyframes robotFloatCycle {
+  0%   { transform: translateY(0px) rotate(0deg); }
+  25%  { transform: translateY(-5px) rotate(-1deg); }
+  50%  { transform: translateY(-9px) rotate(0.5deg); }
+  75%  { transform: translateY(-4px) rotate(1deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+
+/* Ground Floating Shadow Dynamic Scale */
+@keyframes robotShadowPulse {
+  0%   { transform: scale(1); opacity: 0.55; }
+  50%  { transform: scale(0.82); opacity: 0.28; }
+  100% { transform: scale(1); opacity: 0.55; }
+}
+
+/* Detached Left Floating Arm Natural Waving Motion */
+@keyframes robotArmLeftWave {
+  0%   { transform: rotate(-30deg) translateY(0px); }
+  30%  { transform: rotate(-42deg) translateY(-3px) translateX(-1px); }
+  55%  { transform: rotate(-24deg) translateY(2px); }
+  80%  { transform: rotate(-38deg) translateY(-2px); }
+  100% { transform: rotate(-30deg) translateY(0px); }
+}
+
+/* Detached Right Floating Arm Gentle Floating */
+@keyframes robotArmRightFloat {
+  0%   { transform: rotate(24deg) translateY(0px); }
+  35%  { transform: rotate(18deg) translateY(2.5px); }
+  70%  { transform: rotate(28deg) translateY(-2px); }
+  100% { transform: rotate(24deg) translateY(0px); }
+}
+
+/* Expressive Digital Eyelid Blinking */
+@keyframes robotBlinkCycle {
+  0%, 46%, 50%, 100% { transform: scaleY(1); }
+  48%                { transform: scaleY(0.08); }
+}
+
+/* Digital LED Mouth Glow */
+@keyframes robotMouthGlow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255,255,255,0.7)); opacity: 0.95; }
+  50%      { filter: drop-shadow(0 0 5px rgba(255,255,255,1)) drop-shadow(0 0 8px rgba(233,165,47,0.4)); opacity: 1; }
+}
+
+/* Ambient Dock Aura Radar Wave */
+@keyframes robotAuraWave {
+  0% {
+    box-shadow: 0 0 0 0 rgba(233, 165, 47, 0.4), 0 12px 28px rgba(5, 19, 36, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(233, 165, 47, 0), 0 12px 28px rgba(5, 19, 36, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(233, 165, 47, 0), 0 12px 28px rgba(5, 19, 36, 0.3);
+  }
+}
+
+/* Notification Dot Gentle Radar Ping */
+@keyframes notificationPing {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(233, 165, 47, 0.6), 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(233, 165, 47, 0), 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+}
+
+/* Live Online Green Indicator Pulse */
+@keyframes dotLivePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.3); opacity: 0.75; }
+}
+
+/* Tooltip Smooth Reveal */
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Typing bounce indicator in chat */
+@keyframes typingDotBounce {
+  0%, 80%, 100% { transform: translateY(0) scale(0.7); opacity: 0.5; }
+  40%           { transform: translateY(-5px) scale(1); opacity: 1; }
+}
+
+/* --------------------------------------------------------------------------
+   3. HERO ENTRANCE SEQUENCES
+   -------------------------------------------------------------------------- */
+@keyframes heroElementIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-content .eyebrow-tag  { animation: heroElementIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
+.hero-content h1            { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.12s both; }
+.hero-content .lead         { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.22s both; }
+.hero-content .hero-actions { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
+.hero-visual                { animation: heroElementIn 0.75s cubic-bezier(0.16,1,0.3,1) 0.20s both; }
+.hero-stats-bar             { animation: heroElementIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.38s both; }
+
+/* --------------------------------------------------------------------------
+   4. ACCESSIBILITY / PREFERS-REDUCED-MOTION
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal-left, .reveal-right, .reveal-scale {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .robot-dock {
+    animation: none !important;
+  }
+  .robot-eye-group {
+    animation: none !important;
+  }
+  .robot-beacon {
+    animation: none !important;
+  }
+  .hero-content .eyebrow-tag,
+  .hero-content h1,
+  .hero-content .lead,
+  .hero-content .hero-actions,
+  .hero-visual,
+  .hero-stats-bar {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+}
