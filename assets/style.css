@@ -4847,8 +4847,8 @@ footer a:hover {
 
   .uv-media-circle,
   .uv-chairman-circle {
-    width: auto;
-    height: auto;
+    width: auto !important;
+    height: auto !important;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
     overflow: visible;
@@ -5002,36 +5002,51 @@ footer a:hover {
   }
 
   .campus-card {
-    flex-direction: row;
+    flex-direction: column;
     align-items: flex-start;
-    padding: 16px;
-    gap: 14px;
+    padding: 20px;
+    gap: 12px;
   }
 
   .campus-card svg {
-    margin-top: 4px;
+    margin-top: 0;
   }
 
   .campus-card h4 {
-    font-size: 1.05rem;
-    margin-bottom: 2px;
+    font-size: 1.1rem;
+    margin-bottom: 4px;
   }
 
   .contact-info-panel,
   .contact-form-panel {
-    padding: 24px 20px;
+    padding: 20px 16px;
+  }
+
+  .contact-info-panel h3 {
+    font-size: 1.35rem !important;
+    margin-bottom: 8px !important;
+  }
+
+  .contact-info-panel > p {
+    font-size: 0.875rem !important;
+    line-height: 1.4 !important;
+    margin-bottom: 16px !important;
   }
 
   .contact-detail-row {
-    margin-bottom: 14px;
-    gap: 12px;
-    line-height: 1.45;
+    margin-bottom: 10px;
+    gap: 10px;
+  }
+
+  .contact-detail-row div {
+    font-size: 0.85rem;
+    line-height: 1.4;
   }
 
   .cd-icon {
-    width: 32px;
-    height: 32px;
-    font-size: 1rem;
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
     margin-top: 2px;
   }
 
