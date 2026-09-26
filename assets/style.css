@@ -5017,6 +5017,12 @@ footer a:hover {
     margin-bottom: 4px;
   }
 
+  /* Override inline 3-column grid on Student Clubs section */
+  .clubs-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
   .contact-info-panel,
   .contact-form-panel {
     padding: 20px 16px;
@@ -5419,7 +5425,16 @@ footer a:hover {
   }
 
   .placement-stats {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .placement-stats .box {
+    padding: 14px 16px;
+  }
+
+  .placement-stats .box b {
+    font-size: 1.6rem;
   }
 
   .recruiter-chip {
