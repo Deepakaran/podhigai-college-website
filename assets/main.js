@@ -864,6 +864,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  let savedScrollY = 0;
+
   // Chat window open/close
   const openChat = () => {
     chatWindow?.classList.add('open');
@@ -872,15 +874,31 @@ document.addEventListener('DOMContentLoaded', () => {
     clearTimeout(tipTimer);
     hideTooltip();
     chatInput?.focus();
+    
     // Lock background page scroll so chatbot scroll doesn't bleed through to the website
+    // Use position fixed to prevent iOS scroll jump
+    if (window.innerWidth <= 767) {
+      savedScrollY = window.scrollY;
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${savedScrollY}px`;
+      document.body.style.width = '100%';
+    }
     document.body.style.overflow = 'hidden';
   };
 
   const closeChat = () => {
     chatWindow?.classList.remove('open');
     chatBackdrop?.classList.remove('visible');
+    
     // Restore background page scroll
+    if (window.innerWidth <= 767) {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      window.scrollTo(0, savedScrollY);
+    }
     document.body.style.overflow = '';
+    
     setTimeout(() => cyclePrompts(), 4000);
   };
 

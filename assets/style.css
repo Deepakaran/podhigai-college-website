@@ -4723,7 +4723,7 @@ footer a:hover {
 
   /* Ensure drawer footer buttons remain accessible and centered */
   .mobile-drawer .admin-nav-btn {
-    display: flex !important;
+    display: none !important;
   }
 
   .mobile-toggle {
@@ -4841,37 +4841,63 @@ footer a:hover {
   }
 
   .uv-chairman-badge {
-    display: inline-flex;
-    flex-direction: column;
-    align-items: center;
+    display: inline-block;
+    max-width: 100%;
   }
 
   .uv-media-circle,
   .uv-chairman-circle {
-    width: 140px;
-    height: 140px;
-    border-width: 3px;
-    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.16), 0 10px 28px rgba(0, 0, 0, 0.4);
+    width: auto;
+    height: auto;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(14, 12, 44, 0.85);
+    border-radius: 60px;
+    padding: 6px 16px 6px 6px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .uv-chairman-circle::after {
+    display: none;
   }
 
   .uv-chairman-img {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
     object-position: center 12%;
+    border: 2px solid rgba(245, 158, 11, 0.85);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.16);
+    flex-shrink: 0;
   }
 
   .uv-chairman-caption {
-    bottom: 10px;
-    padding: 0 6px;
+    position: static;
+    text-align: left;
+    text-shadow: none;
+    padding: 0;
+    flex: 1;
+    min-width: 0;
   }
 
   .uv-chairman-caption strong {
-    font-size: 0.8125rem;
-    line-height: 1.15;
+    font-size: 0.95rem;
+    line-height: 1.25;
+    white-space: normal;
+    display: block;
   }
 
   .uv-chairman-caption span {
-    font-size: 0.675rem;
-    margin-top: 1px;
+    font-size: 0.75rem;
+    margin-top: 3px;
     color: #FCD34D;
+    white-space: normal;
+    display: block;
   }
 
   /* 4. Excellence / Innovation / Global Perspectives (Clean Vertically Stacked) */
@@ -5146,6 +5172,16 @@ footer a:hover {
     gap: 10px;
   }
 
+  /* ── PLACEMENT PAGE SPECIFIC ── */
+  .placement-band {
+    padding: var(--space-8) var(--space-6);
+  }
+
+  .placement-band .wrap-inner {
+    grid-template-columns: 1fr;
+    gap: var(--space-8);
+  }
+
   /* ── PLACEMENTS HEADER: stack with better spacing ── */
   .placements-header {
     flex-direction: column;
@@ -5226,21 +5262,21 @@ footer a:hover {
 
   /* ── FLOATING ELEMENTS: Chatbot safe positioning ── */
   .robot-assistant {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    right: calc(20px + env(safe-area-inset-right, 0px));
     z-index: 900;
   }
 
   .robot-dock {
-    width: 52px;
-    height: 52px;
-    min-width: 44px;
-    min-height: 44px;
+    width: 72px;
+    height: 72px;
+    min-width: 64px;
+    min-height: 64px;
   }
 
   .robot-svg {
-    width: 34px;
-    height: 34px;
+    width: 52px;
+    height: 52px;
   }
 
   .robot-tooltip {
@@ -5248,12 +5284,12 @@ footer a:hover {
   }
 
   .chat-window {
-    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
     right: 14px;
     left: 14px;
     width: auto;
     max-width: none;
-    height: calc(100dvh - 96px);
+    height: calc(100dvh - 106px);
     max-height: 540px;
     z-index: 950;
   }
@@ -5334,6 +5370,10 @@ footer a:hover {
     gap: 10px;
   }
 
+  .placement-stats {
+    grid-template-columns: 1fr;
+  }
+
   .recruiter-chip {
     padding: 12px 8px;
   }
@@ -5368,24 +5408,24 @@ footer a:hover {
   .chat-window {
     left: 10px;
     right: 10px;
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    height: calc(100dvh - 88px);
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 106px);
     border-radius: var(--radius-lg);
   }
 
   .robot-assistant {
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    right: calc(14px + env(safe-area-inset-right, 0px));
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    right: calc(20px + env(safe-area-inset-right, 0px));
   }
 
   .robot-dock {
-    width: 48px;
-    height: 48px;
+    width: 72px;
+    height: 72px;
   }
 
   .robot-svg {
-    width: 30px;
-    height: 30px;
+    width: 52px;
+    height: 52px;
   }
 }
 

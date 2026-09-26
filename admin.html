@@ -2378,6 +2378,33 @@
         justify-content: center;
       }
     }
+
+    /* ── MOBILE RESTRICTION OVERLAY ── */
+    @media (max-width: 767px) {
+      body::before {
+        content: "Admin Panel is strictly for authorized personnel. Mobile access is currently restricted. Please use a desktop browser.";
+        display: flex;
+        position: fixed;
+        inset: 0;
+        background: #0F172A;
+        color: #FFFFFF;
+        z-index: 999999;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        text-align: center;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+        font-size: 1.25rem;
+        font-weight: 600;
+        line-height: 1.6;
+      }
+      body {
+        overflow: hidden !important;
+      }
+      .admin-topbar, .dashboard-layout {
+        display: none !important;
+      }
+    }
   </style>
 </head>
 
