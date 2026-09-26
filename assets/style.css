@@ -4998,7 +4998,41 @@ footer a:hover {
 
   .campus-grid {
     grid-template-columns: 1fr;
-    gap: 20px;
+    gap: 16px;
+  }
+
+  .campus-card {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .campus-card svg {
+    margin-top: 4px;
+  }
+
+  .campus-card h4 {
+    font-size: 1.05rem;
+    margin-bottom: 2px;
+  }
+
+  .contact-info-panel,
+  .contact-form-panel {
+    padding: 24px 20px;
+  }
+
+  .contact-detail-row {
+    margin-bottom: 14px;
+    gap: 12px;
+    line-height: 1.45;
+  }
+
+  .cd-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+    margin-top: 2px;
   }
 
   .placement-training-grid {
@@ -5329,8 +5363,7 @@ footer a:hover {
     letter-spacing: 0.14em;
   }
 
-  .uv-media-circle,
-  .uv-chairman-circle {
+  .uv-media-circle {
     width: 132px;
     height: 132px;
   }
@@ -5457,8 +5490,7 @@ footer a:hover {
     font-size: 1.65rem;
   }
 
-  .uv-media-circle,
-  .uv-chairman-circle {
+  .uv-media-circle {
     width: 120px;
     height: 120px;
   }
