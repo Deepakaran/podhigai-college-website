@@ -4748,7 +4748,7 @@ footer a:hover {
   .uv-hero {
     min-height: auto;
     padding: 34px 0 28px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .uv-hero-backdrop {
@@ -4851,7 +4851,7 @@ footer a:hover {
     height: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    overflow: hidden;
+    overflow: visible;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -5940,6 +5940,9 @@ footer a:hover {
     gap: 10px;
     align-items: center;
     justify-content: center;
+    width: 92vw;
+    max-width: 340px;
+    margin: 0 auto;
   }
 
   .uv-chairman-caption {
@@ -5948,12 +5951,12 @@ footer a:hover {
   }
 
   .uv-chairman-img {
-    width: 86px;
-    height: 86px;
+    width: 90px;
+    height: 90px;
   }
 
   .uv-chairman-caption strong {
-    font-size: 1.05rem; /* ~16.8px */
+    font-size: 1.1rem; /* ~17.6px */
   }
 
   .uv-chairman-caption span {
