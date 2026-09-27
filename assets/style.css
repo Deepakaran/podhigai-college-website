@@ -2778,6 +2778,21 @@ nav.links {
   gap: 16px;
 }
 
+/* Hide mobile carousel on desktop by default */
+.mobile-recruiter-carousel {
+  display: none;
+}
+
+@keyframes scroll-carousel {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-50% - 16px)); /* -50% - half of gap (32px/2) */
+  }
+}
+
+
 .recruiter-chip {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -5418,10 +5433,49 @@ footer a:hover {
     height: 175px;
   }
 
-  /* Maintain 2 columns on mobile for recruiter grid */
+  /* Hide the desktop recruiter grid on mobile */
   .recruiters-logo-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    display: none;
+  }
+
+  /* Mobile Recruiter Carousel */
+  .mobile-recruiter-carousel {
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    position: relative;
+    /* Optional: masking edges for smooth fade out */
+    mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 10%, black 90%, transparent);
+    padding: 10px 0;
+  }
+
+  .carousel-track {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    width: max-content;
+    animation: scroll-carousel 20s linear infinite;
+  }
+
+  /* Pause animation on interaction if possible */
+  .mobile-recruiter-carousel:active .carousel-track {
+    animation-play-state: paused;
+  }
+
+  .carousel-item {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .carousel-track {
+      animation-duration: 60s;
+    }
   }
 
   .placement-stats {
