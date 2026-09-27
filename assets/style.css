@@ -2803,6 +2803,15 @@ nav.links {
   font-weight: 600;
   color: #FFFFFF;
   transition: all 0.25s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.recruiter-chip img {
+  height: clamp(24px, 2vw, 40px);
+  max-width: 100%;
+  object-fit: contain;
 }
 
 .recruiter-chip:hover {
@@ -5464,6 +5473,18 @@ footer a:hover {
   }
 
   .carousel-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .carousel-item img {
+    height: clamp(30px, 7vw, 52px);
+    width: auto;
+    object-fit: contain;
+  }
+
+  .carousel-item .rec-name-text {
     font-size: 1.125rem;
     font-weight: 700;
     color: rgba(255, 255, 255, 0.9);
