@@ -868,22 +868,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Chat window open/close
   const openChat = () => {
+    // Capture scroll BEFORE any UI changes or focus events cause the browser to jump
+    if (window.innerWidth <= 767) {
+      savedScrollY = window.scrollY;
+    }
+
     chatWindow?.classList.add('open');
     chatBackdrop?.classList.add('visible');
     robotPing?.classList.add('hidden');
     clearTimeout(tipTimer);
     hideTooltip();
-    chatInput?.focus();
     
     // Lock background page scroll so chatbot scroll doesn't bleed through to the website
     // Use position fixed to prevent iOS scroll jump
     if (window.innerWidth <= 767) {
-      savedScrollY = window.scrollY;
       document.body.style.position = 'fixed';
       document.body.style.top = `-${savedScrollY}px`;
       document.body.style.width = '100%';
     }
     document.body.style.overflow = 'hidden';
+
+    // Focus input AFTER locking the scroll to prevent the browser from jumping the page
+    chatInput?.focus({ preventScroll: true });
   };
 
   const closeChat = () => {
@@ -895,9 +901,12 @@ document.addEventListener('DOMContentLoaded', () => {
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.width = '';
-      window.scrollTo(0, savedScrollY);
     }
     document.body.style.overflow = '';
+    
+    if (window.innerWidth <= 767) {
+      window.scrollTo(0, savedScrollY);
+    }
     
     setTimeout(() => cyclePrompts(), 4000);
   };
