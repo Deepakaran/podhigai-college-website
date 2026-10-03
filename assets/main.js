@@ -896,16 +896,29 @@ document.addEventListener('DOMContentLoaded', () => {
     chatWindow?.classList.remove('open');
     chatBackdrop?.classList.remove('visible');
     
-    // Restore background page scroll
+    // Restore background page scroll on mobile
     if (window.innerWidth <= 767) {
+      // Temporarily disable smooth scrolling so the scroll restoration is instant
+      // (html has scroll-behavior: smooth which would animate the scrollTo call,
+      // creating a visible "jump to top → animate back" effect)
+      const htmlEl = document.documentElement;
+      htmlEl.style.scrollBehavior = 'auto';
+
+      // Remove the position:fixed lock and immediately restore scroll position
+      // in one synchronous block — the browser must not paint between these
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.width = '';
-    }
-    document.body.style.overflow = '';
-    
-    if (window.innerWidth <= 767) {
+      document.body.style.overflow = '';
       window.scrollTo(0, savedScrollY);
+
+      // Re-enable smooth scrolling on the next frame, after the browser has
+      // committed the correct scroll position
+      requestAnimationFrame(() => {
+        htmlEl.style.scrollBehavior = '';
+      });
+    } else {
+      document.body.style.overflow = '';
     }
     
     setTimeout(() => cyclePrompts(), 4000);

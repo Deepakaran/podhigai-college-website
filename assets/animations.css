@@ -165,23 +165,123 @@
 /* --------------------------------------------------------------------------
    3. HERO ENTRANCE SEQUENCES
    -------------------------------------------------------------------------- */
-@keyframes heroElementIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+@keyframes uvHeroLineIn {
+  from { opacity: 0; transform: translateY(35px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes uvHeroElementIn {
+  from { opacity: 0; transform: translateY(15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes uvHeroChairmanIn {
+  from { opacity: 0; transform: scale(0.92) translateY(15px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes uvHeroChairmanFloat {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+  100% { transform: translateY(0); }
+}
+
+@keyframes uvHeroBackgroundKenBurns {
+  from { transform: scale(1); }
+  to { transform: scale(1.025); }
+}
+
+/* Staggered text lines */
+.hero-title-line {
+  display: inline-block;
+  opacity: 0;
+  animation: uvHeroLineIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-title-line.line-1 { animation-delay: 0.1s; }
+.hero-title-line.line-2 { animation-delay: 0.22s; } /* +120ms */
+.hero-title-line.line-3 { animation-delay: 0.34s; } /* +120ms */
+
+/* Eyebrow text */
+.uv-hero-eyebrow {
+  opacity: 0;
+  animation: uvHeroElementIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  /* Duration 500-700ms, starts before main heading */
+}
+
+/* Description */
+.uv-hero-desc {
+  opacity: 0;
+  /* Starts ~150-200ms after final heading line (0.34 + 0.8 = 1.14s? Wait, start after line finishes or begins? Prompt: "Start approximately 150-200ms after the final heading line [begins appearing/starts]". Let's assume 0.34s + 0.15s = 0.5s) */
+  animation: uvHeroElementIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+}
+
+/* CTA Buttons */
+.uv-hero-actions a {
+  opacity: 0;
+  animation: uvHeroElementIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.uv-hero-actions a:nth-child(1) { animation-delay: 0.6s; }
+.uv-hero-actions a:nth-child(2) { animation-delay: 0.7s; }
+
+/* Desktop hover for buttons */
+@media (min-width: 1024px) {
+  .uv-hero-actions a {
+    transition: transform 0.3s ease, background 0.3s ease, opacity 0.3s ease;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .uv-hero-actions a:hover {
+    transform: translateY(-2px) scale(1.02);
   }
 }
 
-.hero-content .eyebrow-tag  { animation: heroElementIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.05s both; }
-.hero-content h1            { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.12s both; }
-.hero-content .lead         { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.22s both; }
-.hero-content .hero-actions { animation: heroElementIn 0.65s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
-.hero-visual                { animation: heroElementIn 0.75s cubic-bezier(0.16,1,0.3,1) 0.20s both; }
-.hero-stats-bar             { animation: heroElementIn 0.6s cubic-bezier(0.16,1,0.3,1) 0.38s both; }
+/* Chairman Image */
+.uv-chairman-circle {
+  opacity: 0;
+  animation: 
+    uvHeroChairmanIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards,
+    uvHeroChairmanFloat 4.5s ease-in-out 1s infinite forwards;
+}
+
+/* Chairman Name / Designation */
+.uv-chairman-caption {
+  opacity: 0;
+  animation: uvHeroElementIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
+}
+
+@keyframes uvHeroPillarIn {
+  from { opacity: 0; transform: translateY(25px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Bottom Feature Cards */
+.uv-pillars-dock .uv-pillar-card {
+  opacity: 0;
+  animation: uvHeroPillarIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.uv-pillars-dock .uv-pillar-card:nth-child(1) { animation-delay: 0s; }
+.uv-pillars-dock .uv-pillar-card:nth-child(2) { animation-delay: 0.12s; }
+.uv-pillars-dock .uv-pillar-card:nth-child(3) { animation-delay: 0.24s; }
+
+/* Hero Background Cinematic Effect */
+.uv-hero-backdrop {
+  transform-origin: center center;
+  animation: uvHeroBackgroundKenBurns 14s ease-out forwards;
+}
+
+/* Desktop Mouse Parallax */
+@media (min-width: 1024px) {
+  .uv-hero-backdrop {
+    translate: calc(var(--px, 0) * 2px) calc(var(--py, 0) * 2px);
+    will-change: translate;
+  }
+  .uv-chairman-circle {
+    translate: calc(var(--px, 0) * -4.5px) calc(var(--py, 0) * -4.5px);
+    will-change: translate;
+  }
+  .uv-hero-left {
+    translate: calc(var(--px, 0) * -1.5px) calc(var(--py, 0) * -1.5px);
+    will-change: translate;
+  }
+}
 
 /* --------------------------------------------------------------------------
    4. ACCESSIBILITY / PREFERS-REDUCED-MOTION
@@ -206,9 +306,18 @@
   .hero-content .lead,
   .hero-content .hero-actions,
   .hero-visual,
-  .hero-stats-bar {
+  .hero-stats-bar,
+  .hero-title-line,
+  .uv-hero-eyebrow,
+  .uv-hero-desc,
+  .uv-hero-actions a,
+  .uv-chairman-circle,
+  .uv-chairman-caption,
+  .uv-pillars-dock .uv-pillar-card,
+  .uv-hero-backdrop {
     animation: none !important;
     opacity: 1 !important;
+    transform: none !important;
   }
 }
 

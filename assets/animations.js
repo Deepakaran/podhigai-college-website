@@ -131,10 +131,57 @@
     });
   }
 
+  /* ---------- Hero Parallax (Desktop Only) ---------- */
+  function initHeroParallax() {
+    var hero = document.querySelector(".uv-hero");
+    if (!hero || reduceMotion) return;
+
+    var rafId;
+    var mx = 0, my = 0;
+    var currentX = 0, currentY = 0;
+
+    hero.addEventListener("mousemove", function(e) {
+      if (window.innerWidth < 1024) return;
+      var rect = hero.getBoundingClientRect();
+      var x = (e.clientX - rect.left) / rect.width;
+      var y = (e.clientY - rect.top) / rect.height;
+      mx = (x - 0.5) * 2;
+      my = (y - 0.5) * 2;
+      if (!rafId) rafId = requestAnimationFrame(updateParallax);
+    });
+
+    hero.addEventListener("mouseleave", function() {
+      mx = 0; my = 0;
+      if (!rafId) rafId = requestAnimationFrame(updateParallax);
+    });
+
+    function updateParallax() {
+      if (window.innerWidth < 1024) {
+        currentX = 0; currentY = 0;
+        hero.style.setProperty("--px", "0");
+        hero.style.setProperty("--py", "0");
+        rafId = null;
+        return;
+      }
+      currentX += (mx - currentX) * 0.1;
+      currentY += (my - currentY) * 0.1;
+      
+      hero.style.setProperty("--px", currentX);
+      hero.style.setProperty("--py", currentY);
+      
+      if (Math.abs(mx - currentX) > 0.005 || Math.abs(my - currentY) > 0.005) {
+        rafId = requestAnimationFrame(updateParallax);
+      } else {
+        rafId = null;
+      }
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initReveal();
     initNavShadow();
     initCounters();
     initFaq();
+    initHeroParallax();
   });
 })();
