@@ -4,7 +4,13 @@
 
 const io = require('socket.io-client');
 
-const BASE_URL = 'http://localhost:3001';
+// Legacy destructive integration scenario: never run against real college data.
+if (process.env.TEST_ALLOW_MUTATIONS !== 'disposable-database' ||
+    !process.env.TEST_BASE_URL || !process.env.TEST_ADMIN_USERNAME || !process.env.TEST_ADMIN_PASSWORD) {
+  console.error('Requires TEST_ALLOW_MUTATIONS=disposable-database, TEST_BASE_URL, TEST_ADMIN_USERNAME and TEST_ADMIN_PASSWORD. Use an isolated disposable database only.');
+  process.exit(1);
+}
+const BASE_URL = process.env.TEST_BASE_URL.replace(/\/$/, '');
 const API_URL = `${BASE_URL}/api`;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -19,7 +25,7 @@ async function runTests() {
   const loginRes = await fetch(`${API_URL}/admin/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'Admin123', password: 'Admin@2719' })
+    body: JSON.stringify({ username: process.env.TEST_ADMIN_USERNAME, password: process.env.TEST_ADMIN_PASSWORD })
   });
   const loginData = await loginRes.json();
   if (!loginData.success || !loginData.token) {
@@ -307,7 +313,7 @@ async function runTests() {
   }
   await wait(500);
   console.log('   ✓ Handled burst updates cleanly without errors.');
-  console.log('   🎉 TEST 7 PASSED: Coalescing and debouncing verified.\n');
+  console.log('   NOTE: Burst smoke scenario only; coalescing/debouncing is not asserted.\n');
 
   // Clean disconnect
   deviceA.disconnect();
@@ -315,7 +321,7 @@ async function runTests() {
   deviceC.disconnect();
 
   console.log('====================================================');
-  console.log('✅ ALL TESTS PASSED SUCCESSFULLY!');
+  console.log('✅ Legacy integration scenarios completed (burst coalescing not verified).');
   console.log('   MongoDB Atlas remains the single source of truth.');
   console.log('   Cross-device real-time synchronization is VERIFIED.');
   console.log('====================================================');

@@ -3,6 +3,8 @@
 //  Podhigai College — Backend API + Frontend Site
 // ============================================================
 
+const path = require('node:path');
+const siteRoot = path.resolve(__dirname, '..');
 module.exports = {
   apps: [
 
@@ -32,9 +34,8 @@ module.exports = {
     // ── 2. Frontend Static Site (http-server on port 8080) ─────
     {
       name       : 'podhigai-site',
-      script     : 'c:\\College website\\podhigai-site\\node_modules\\http-server\\bin\\http-server',
-      args       : '-p 5500 -c-1 --cors',
-      cwd        : 'c:\\College website\\podhigai-site',
+      script     : path.join(siteRoot, 'scripts', 'serve.cjs'),
+      cwd        : siteRoot,
       interpreter: 'node',
 
       autorestart   : true,
@@ -43,8 +44,8 @@ module.exports = {
       min_uptime    : '5s',
 
       log_date_format : 'YYYY-MM-DD HH:mm:ss',
-      out_file        : 'c:\\College website\\podhigai-site\\logs\\site-out.log',
-      error_file      : 'c:\\College website\\podhigai-site\\logs\\site-error.log',
+      out_file        : path.join(siteRoot, 'logs', 'site-out.log'),
+      error_file      : path.join(siteRoot, 'logs', 'site-error.log'),
       merge_logs      : true,
 
       env: { NODE_ENV: 'production' },

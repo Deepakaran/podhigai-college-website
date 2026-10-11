@@ -24,6 +24,7 @@
      ========================================================================== */
 
   const EVENTS_STORAGE_KEY = 'podhigai_events';
+  let liveEvents = null;
 
   const DEFAULT_EVENTS = [
     {
@@ -68,11 +69,12 @@
   ];
 
   const getLocalEvents = () => {
+    if (liveEvents !== null) return liveEvents;
     try {
       const stored = localStorage.getItem(EVENTS_STORAGE_KEY);
       if (!stored) return DEFAULT_EVENTS;
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed) && parsed.length) {
+      if (Array.isArray(parsed)) {
         return parsed.filter(e => e.published !== false);
       }
       return DEFAULT_EVENTS;
@@ -231,6 +233,8 @@
   };
 
   const buildMobileEvents = () => {
+    if (!isMobile()) return;
+    stopTimer();
     var section = document.getElementById('events');
     if (!section) return;
 
@@ -410,12 +414,14 @@
 
     window.addEventListener('storage', function (e) {
       if (e.key === 'podhigai_events' && isMobile()) {
+        liveEvents = null;
         destroyMobileEvents();
         setTimeout(buildMobileEvents, 80);
       }
     });
 
-    window.addEventListener('podhigai:eventsUpdated', function () {
+    window.addEventListener('podhigai:eventsUpdated', function (e) {
+      liveEvents = Array.isArray(e.detail?.events) ? e.detail.events : null;
       if (isMobile()) {
         destroyMobileEvents();
         setTimeout(buildMobileEvents, 80);

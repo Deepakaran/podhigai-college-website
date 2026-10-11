@@ -12,6 +12,11 @@ document.addEventListener('DOMContentLoaded', () => {
     ? 'http://localhost:3001/api'
     : 'https://podhigai-backend.onrender.com/api';
 
+  const saveCache = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Optional cache. */ }
+  };
+  const siteLink = (path) => window.location.pathname.includes('/departments/') ? '../' + path : path;
+
   /* --------------------------------------------------------------------------
      1. STICKY NAVIGATION & MOBILE DRAWER
      -------------------------------------------------------------------------- */
@@ -156,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     dropdownEl.innerHTML = matches.slice(0, 6).map(item => `
-      <a href="${item.url}" class="search-result-item">
+      <a href="${siteLink(item.url)}" class="search-result-item">
         <div class="search-result-title">${escapeHtml(item.title)}</div>
         <div class="search-result-sub">${escapeHtml(item.sub)}</div>
       </a>
@@ -178,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
         item.keywords.toLowerCase().includes(q) ||
         item.sub.toLowerCase().includes(q)
       );
-      if (match) window.location.href = match.url;
+      if (match) window.location.href = siteLink(match.url);
     }
   });
 
@@ -444,6 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const getCampusGalleryPhotos = () => {
+    if (liveGalleryPhotos !== null) return liveGalleryPhotos;
     let result = [];
     try {
       const stored = localStorage.getItem(GALLERY_STORAGE_KEY);
@@ -461,7 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
       result = DEFAULT_CAMPUS_GALLERY;
     }
     // Sort strictly by admin sequence order (1, 2, 3...)
-    result.sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
+    result.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
     return result;
   };
 
@@ -475,6 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let isGalleryExpanded = false;
   let activeGallerySubset = [];
   let currentLbIndex = 0;
+  let liveGalleryPhotos = null;
 
   // Background fetch to keep local storage in sync with MongoDB server
   const syncGalleryFromApi = async () => {
@@ -487,7 +494,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         const data = await res.json();
         if (data.success && Array.isArray(data.photos)) {
-          localStorage.setItem(GALLERY_STORAGE_KEY, JSON.stringify(data.photos));
+          liveGalleryPhotos = data.photos;
+          saveCache(GALLERY_STORAGE_KEY, data.photos);
           renderCampusGallery();
         }
       }
@@ -499,6 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Cross-tab auto-sync: when admin adds or deletes a photo in another tab, update immediately
   window.addEventListener('storage', (e) => {
     if (e.key === GALLERY_STORAGE_KEY || e.key === DELETED_PHOTOS_KEY) {
+      liveGalleryPhotos = null;
       renderCampusGallery();
     }
   });
@@ -520,6 +529,11 @@ document.addEventListener('DOMContentLoaded', () => {
       : allPhotos.filter(p => (p.category || '').toLowerCase() === filterCat);
 
     activeGallerySubset = matching;
+    currentLbIndex = Math.min(currentLbIndex, Math.max(0, matching.length - 1));
+    if (lightbox?.classList.contains('active')) {
+      if (matching.length) updateLightboxUI();
+      else closePhotoLightbox();
+    }
 
     // View More Button Handling (5-photo initial limit)
     if (galleryMoreWrap && galleryMoreBtn) {
@@ -848,8 +862,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (distance < 380) {
       const maxShift = 3.0;
-      const shiftX = (dx / distance) * maxShift;
-      const shiftY = (dy / distance) * maxShift;
+      const shiftX = (dx / (distance || 1)) * maxShift;
+      const shiftY = (dy / (distance || 1)) * maxShift;
       pupils.forEach(p => {
         p.style.transform = `translate(${shiftX.toFixed(2)}px, ${shiftY.toFixed(2)}px)`;
       });
@@ -865,12 +879,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   let savedScrollY = 0;
+  let chatScrollLocked = false;
 
   // Chat window open/close
   const openChat = () => {
     // Capture scroll BEFORE any UI changes or focus events cause the browser to jump
     if (window.innerWidth <= 767) {
       savedScrollY = window.scrollY;
+      chatScrollLocked = true;
     }
 
     chatWindow?.classList.add('open');
@@ -897,7 +913,8 @@ document.addEventListener('DOMContentLoaded', () => {
     chatBackdrop?.classList.remove('visible');
     
     // Restore background page scroll on mobile
-    if (window.innerWidth <= 767) {
+    if (chatScrollLocked) {
+      chatScrollLocked = false;
       // Temporarily disable smooth scrolling so the scroll restoration is instant
       // (html has scroll-behavior: smooth which would animate the scrollTo call,
       // creating a visible "jump to top → animate back" effect)
@@ -1339,7 +1356,7 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const getDynamicEventsReply = (filterType, rawQuery = '') => {
-    const events = (typeof getEvents === 'function') ? getEvents() : DEFAULT_EVENTS;
+    const events = currentEvents;
     const published = events.filter(e => e.published !== false);
 
     if (!published.length) {
@@ -2225,7 +2242,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentPhotoIndex = 0;
 
   const openEventGallery = (eventId) => {
-    const event = currentEvents.find(e => e.id === eventId) || DEFAULT_EVENTS.find(e => e.id === eventId);
+    const event = currentEvents.find(e => e.id === eventId);
     if (!event || !eventModal) return;
 
     activeEventGallery = Array.isArray(event.gallery) && event.gallery.length ? event.gallery : [event.coverImage || 'images/event-technova-symposium.png'];
@@ -2262,7 +2279,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!eventModalThumbnails) return;
     eventModalThumbnails.innerHTML = activeEventGallery.map((src, idx) => `
       <div class="em-thumb ${idx === 0 ? 'active' : ''}" data-idx="${idx}">
-        <img src="${src}" alt="Event thumbnail ${idx + 1}" loading="lazy">
+        <img src="${escapeHtml(src)}" alt="Event thumbnail ${idx + 1}" loading="lazy">
       </div>
     `).join('');
 
@@ -2311,9 +2328,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const actionsContainer = document.getElementById('eventsActionsContainer');
     if (!gridContainer) return;
 
-    currentEvents = getEvents();
-    const featured = currentEvents.find(e => e.featured) || currentEvents[0];
-    const regularEvents = currentEvents.filter(e => e.id !== featured?.id);
+    // Escape only the display copy; retain original values for modal lookups.
+    const displayEvents = currentEvents.map(event => Object.fromEntries(
+      Object.entries(event).map(([key, value]) => [key, typeof value === 'string' ? escapeHtml(value) : value])
+    ));
+    const featured = displayEvents.find(e => e.featured) || displayEvents[0];
+    const regularEvents = displayEvents.filter(e => e.id !== featured?.id);
+    if (featuredContainer && !featured) featuredContainer.innerHTML = '';
 
     // 1. Render Featured / Flagship Event
     if (featuredContainer && featured) {
@@ -2418,7 +2439,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 4. Attach click listeners to all gallery buttons & media elements (featured + regular)
-    document.querySelectorAll('[data-event-id]').forEach(btn => {
+    document.querySelectorAll('#featuredEventCard [data-event-id], #eventsGrid [data-event-id]').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-event-id');
         if (id) openEventGallery(id);
@@ -2449,7 +2470,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         const eventsList = Array.isArray(data) ? data : (data.events || []);
         if (Array.isArray(eventsList)) {
-          localStorage.setItem(EVENTS_STORAGE_KEY, JSON.stringify(eventsList));
+          saveCache(EVENTS_STORAGE_KEY, eventsList);
           currentEvents = eventsList.filter(e => e.published !== false);
           renderEvents();
           window.dispatchEvent(new CustomEvent('podhigai:eventsUpdated', { detail: { events: currentEvents } }));
@@ -2468,8 +2489,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  window.addEventListener('podhigai:eventsUpdated', () => {
-    currentEvents = getEvents();
+  window.addEventListener('podhigai:eventsUpdated', (e) => {
+    currentEvents = Array.isArray(e.detail?.events) ? e.detail.events : getEvents();
     renderEvents();
   });
 
@@ -2501,6 +2522,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const subjectInput = document.getElementById('cSubject');
       const messageInput = document.getElementById('cMessage');
       const submitBtn = document.getElementById('contactSubmitBtn');
+      if (submitBtn?.disabled) return;
 
       const name = nameInput?.value?.trim();
       const email = emailInput?.value?.trim();
@@ -2518,7 +2540,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email || '')) {
         if (contactStatus) {
           contactStatus.className = 'contact-form-status error';
           contactStatus.innerHTML = '⚠️ Please enter a valid Email Address.';
@@ -2544,49 +2566,27 @@ document.addEventListener('DOMContentLoaded', () => {
         submitBtn.innerHTML = '<span style="display:inline-block; width:15px; height:15px; border:2px solid #ffffff; border-top-color:transparent; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;"></span> Submitting Enquiry…';
       }
 
-      // 1. Guaranteed Local Persistence for Admin Panel
-      const contactItem = {
-        _id: 'c_' + Date.now(),
-        name,
-        email,
-        phone,
-        subject,
-        message,
-        createdAt: new Date().toISOString(),
-        isRead: false
-      };
-
-      try {
-        const stored = JSON.parse(localStorage.getItem('podhigai_contacts') || '[]');
-        stored.unshift(contactItem);
-        localStorage.setItem('podhigai_contacts', JSON.stringify(stored));
-      } catch (err) {
-        console.warn('LocalStorage save error:', err);
-      }
-
-      // 2. Dispatch to Backend API if running
-      let apiSuccess = true;
-      let apiMsg = '';
+      // Delivery is confirmed only by the API, never by browser-local storage.
+      let apiSuccess = false;
+      let apiMsg = 'Unable to confirm delivery. Your entries have been kept. Please try again.';
       try {
         const res = await fetch(`${API_BASE}/contact`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email, phone, subject, message }),
-          signal: AbortSignal.timeout ? AbortSignal.timeout(3000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok && data.message) {
-          apiSuccess = false;
-          apiMsg = data.message;
-        }
+        apiSuccess = res.ok && data.success === true;
+        if (!apiSuccess && data.message) apiMsg = data.message;
       } catch (apiErr) {
-        // Backend offline or timeout — fine since saved in localStorage
+        // Preserve inputs and show an unconfirmed-delivery error.
       }
 
       if (!apiSuccess) {
         if (contactStatus) {
           contactStatus.className = 'contact-form-status error';
-          contactStatus.innerHTML = `⚠️ <strong>Notice:</strong> ${apiMsg}`;
+          contactStatus.textContent = `⚠️ Notice: ${apiMsg}`;
           contactStatus.style.display = 'block';
         }
         if (submitBtn) {
@@ -2599,7 +2599,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // 3. UI Success Confirmation
       if (contactStatus) {
         contactStatus.className = 'contact-form-status success';
-        contactStatus.innerHTML = `✅ <strong>Thank you, ${name}!</strong> Your admission enquiry for <em>${subject}</em> has been received successfully. Our Admissions Officer will contact you within 24 hours at <strong>${phone}</strong>.`;
+        contactStatus.textContent = `Thank you, ${name}! Your admission enquiry for ${subject} has been received. Our admissions team will contact you at ${phone}.`;
         contactStatus.style.display = 'block';
       }
 

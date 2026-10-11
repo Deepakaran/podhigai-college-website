@@ -1,5 +1,7 @@
 # Podhigai College — Contact Form Backend Setup Guide
 
+> **October 2026 repair update:** See [backend/README.md](backend/README.md) for authentication, CORS and optional seeding configuration. Run `npm test` from the root for isolated regression checks. See [the repair report](reports/bug-audit-2026-10-11.md) for findings and limitations.
+
 ## Prerequisites
 - [Node.js](https://nodejs.org/) v18 or higher installed
 - A free [MongoDB Atlas](https://cloud.mongodb.com) account
@@ -16,7 +18,7 @@
    - Role: **Read and Write to any database** → click **Add User**
 4. **Allow network access:**
    - Go to **Network Access** → **Add IP Address**
-   - Click **"Allow Access from Anywhere"** (0.0.0.0/0) → **Confirm**
+   - Allow only the backend deployment's outbound IP addresses and any development IPs you need.
 5. **Get your connection string:**
    - Go to **Database** → click **Connect** → **Drivers**
    - Copy the connection string (looks like: `mongodb+srv://...`)
@@ -30,6 +32,9 @@ Edit the file `backend/.env` and update:
 ```env
 MONGODB_URI=mongodb+srv://pcetadmin:YourSecurePassword@cluster0.xxxxx.mongodb.net/podhigai_contacts?retryWrites=true&w=majority
 ADMIN_PASSWORD=your_secure_admin_password
+ADMIN_USERNAME=your_admin_username
+JWT_SECRET=replace_with_a_long_random_secret
+NODE_ENV=development
 PORT=3001
 ```
 
@@ -48,16 +53,14 @@ node server.js
 
 You should see:
 ```
-✅  MongoDB connected successfully
-🚀  Podhigai Contact API
-    → http://localhost:3001/api/health
+Podhigai Contact API listening on port 3001
 ```
 
 ---
 
 ## Step 4: Open the Website
 
-Open `contact.html` in your browser (or via Live Server in VS Code).
+Run `npm start` in a second terminal at the project root, then open `http://localhost:5500/contact.html`. This server allows public website files only and binds to loopback; do not serve the repository root with an unrestricted static server.
 
 - Fill out the contact form and click **Send Message**
 - A green toast notification confirms the message was saved to MongoDB
@@ -68,7 +71,7 @@ Open `contact.html` in your browser (or via Live Server in VS Code).
 
 1. Click the **Admin** button in the contact page navigation (top right)
    — OR open `admin.html` directly in your browser
-2. Enter your admin password (the one set in `.env`)
+2. Enter your admin username and password (the values set in `.env`)
 3. View all submitted contact messages with name, email, phone and message content
 
 ---
@@ -79,9 +82,9 @@ Open `contact.html` in your browser (or via Live Server in VS Code).
 |---|---|
 | 📊 Stats | Total messages, unread count, today's count |
 | 🔍 Search | Filter messages by name, email, or message content |
-| 📖 Auto-read | Messages are marked as read when viewed |
+| 📖 Mark as read | Use the message checkbox; state changes only after server confirmation |
 | 🗑️ Delete | Permanently delete messages with confirmation |
-| 📄 Pagination | 20 messages per page |
+| 📄 Pagination | 50 messages per page in the dashboard |
 
 ---
 

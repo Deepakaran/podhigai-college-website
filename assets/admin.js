@@ -16,6 +16,30 @@ let deleteReviewTargetId = null;
 let rvCurrentRating = 'all';
 let rvSearchQuery = '';
 let currentView = 'messages'; // 'messages' | 'reviews'
+const MESSAGE_PAGE_SIZE = 50;
+let messagesLoadVersion = 0;
+
+function expireAdminSession() {
+  handleLogout();
+  const error = document.getElementById('loginError');
+  if (error) error.textContent = 'Your session has expired. Please sign in again.';
+}
+
+async function adminFetch(url, options) {
+  const token = adminToken;
+  if (!token) throw new Error('Please sign in again.');
+  const res = await fetch(url, options);
+  if (token !== adminToken) throw new Error('Session changed. Please retry.');
+  if (res.status === 401 || res.status === 403) {
+    expireAdminSession();
+    throw new Error('Your session has expired. Please sign in again.');
+  }
+  return res;
+}
+
+function cacheLocalValue(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Cache is optional. */ }
+}
 
 // ── Backend Health Check ──────────────────────────────────────
 async function checkBackendHealth() {
@@ -34,7 +58,8 @@ async function checkBackendHealth() {
       cache: 'no-store',
       signal: AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined
     });
-    if (res.ok) {
+    const health = await res.json();
+    if (res.ok && health.db === 'connected') {
       if (badge) {
         badge.className = 'health-badge connected';
         badge.title = 'Backend Connected (Render / Local API)';
@@ -44,7 +69,7 @@ async function checkBackendHealth() {
     } else {
       if (badge) {
         badge.className = 'health-badge offline';
-        badge.title = `Backend Offline (Status ${res.status})`;
+        badge.title = res.ok ? 'Backend reachable, but database is disconnected.' : `Backend Offline (Status ${res.status})`;
         if (text) text.textContent = 'Backend Offline';
       }
       return false;
@@ -62,6 +87,7 @@ async function checkBackendHealth() {
 // ── Real XMLHttpRequest with Upload Progress ───────────────────
 function apiRequestWithProgress({ url, method = 'GET', data = null, token = '', onProgress = null, timeout = 60000 }) {
   return new Promise((resolve, reject) => {
+    if (!token) { reject(new Error('Please sign in again.')); return; }
     const xhr = new XMLHttpRequest();
     xhr.open(method, url, true);
     xhr.timeout = timeout;
@@ -86,6 +112,12 @@ function apiRequestWithProgress({ url, method = 'GET', data = null, token = '', 
     }
 
     xhr.onload = () => {
+      if (token !== adminToken) { reject(new Error('Session changed. Please retry.')); return; }
+      if (xhr.status === 401 || xhr.status === 403) {
+        expireAdminSession();
+        reject(new Error('Your session has expired. Please sign in again.'));
+        return;
+      }
       let responseData = {};
       try {
         responseData = JSON.parse(xhr.responseText || '{}');
@@ -93,7 +125,7 @@ function apiRequestWithProgress({ url, method = 'GET', data = null, token = '', 
         responseData = { message: xhr.statusText || 'Invalid response from server' };
       }
 
-      if (xhr.status >= 200 && xhr.status < 300) {
+      if (xhr.status >= 200 && xhr.status < 300 && responseData.success === true) {
         resolve({ ok: true, status: xhr.status, data: responseData });
       } else {
         const errorMsg = responseData.message || `Request failed with status ${xhr.status}`;
@@ -278,7 +310,8 @@ function isReviewDeleted(r) {
 
 function getLocalContacts() {
   try {
-    return JSON.parse(localStorage.getItem(CONTACTS_KEY) || '[]');
+    const contacts = JSON.parse(localStorage.getItem(CONTACTS_KEY) || '[]');
+    return Array.isArray(contacts) ? contacts : [];
   } catch {
     return [];
   }
@@ -311,7 +344,8 @@ document.addEventListener('DOMContentLoaded', () => {
   checkBackendHealth();
   setInterval(checkBackendHealth, 30000);
 
-  const savedToken = sessionStorage.getItem('adminToken');
+  let savedToken = '';
+  try { savedToken = sessionStorage.getItem('adminToken') || ''; } catch { }
   if (savedToken) {
     adminToken = savedToken;
     showDashboard();
@@ -451,7 +485,7 @@ async function handleLogin(e) {
   const usernameInput = document.getElementById('adminUsername');
   const passwordInput = document.getElementById('adminPassword');
   const username = usernameInput ? usernameInput.value.trim() : '';
-  const password = passwordInput ? passwordInput.value.trim() : '';
+  const password = passwordInput ? passwordInput.value : '';
   const btn = document.getElementById('loginBtn');
   const errorEl = document.getElementById('loginError');
 
@@ -476,7 +510,7 @@ async function handleLogin(e) {
 
     if (res.ok && data.success && data.token) {
       adminToken = data.token;
-      sessionStorage.setItem('adminToken', adminToken);
+      try { sessionStorage.setItem('adminToken', adminToken); } catch { }
       showDashboard();
       return;
     } else {
@@ -503,6 +537,18 @@ function showLogin() {
 }
 
 async function showDashboard() {
+  currentFilter = 'all';
+  currentPage = 1;
+  searchQuery = dateFrom = dateTo = '';
+  ['searchInput', 'dateFrom', 'dateTo'].forEach(id => {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  });
+  showMessagesPanel();
+  ['all', 'unread', 'read', 'events', 'gallery', 'chairman'].forEach(id => {
+    const nav = document.getElementById(`sideNav-${id}`);
+    if (nav) nav.classList.toggle('active', id === 'all');
+  });
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboardScreen').style.display = 'flex';
   checkBackendHealth();
@@ -510,8 +556,19 @@ async function showDashboard() {
 }
 
 function handleLogout() {
-  sessionStorage.removeItem('adminToken');
+  try { sessionStorage.removeItem('adminToken'); } catch { }
   adminToken = '';
+  messagesLoadVersion++;
+  closeDeleteModal();
+  closeDeleteEventModal();
+  closeDeletePhotoModal();
+  closeEventModal();
+  closePhotoModal();
+  closeSidebar();
+  const conflict = document.getElementById('remoteConflictBanner');
+  if (conflict) conflict.style.display = 'none';
+  const messages = document.getElementById('messagesContainer');
+  if (messages) messages.innerHTML = '';
   const uInput = document.getElementById('adminUsername');
   const pInput = document.getElementById('adminPassword');
   if (uInput) uInput.value = '';
@@ -725,12 +782,12 @@ function clearFilters() {
   loadMessages();
 }
 
-// ── Fetch & Merge Messages (Deduplicated) ────────────────────
+// ── Fetch all server messages; browser caches are not an inbox ──
 async function fetchMergedMessages() {
-  let apiMessages = [];
-  try {
-    const params = new URLSearchParams({ page: 1, limit: 100 });
-    const res = await fetch(`${API}/admin/messages?${params}`, {
+  const messages = [];
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({ page, limit: 100 });
+    const res = await adminFetch(`${API}/admin/messages?${params}`, {
       headers: {
         'Authorization': `Bearer ${adminToken}`,
         'Cache-Control': 'no-cache, no-store'
@@ -738,33 +795,18 @@ async function fetchMergedMessages() {
       cache: 'no-store',
       signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && Array.isArray(data.messages)) {
-        apiMessages = data.messages;
-      }
+    if (!res.ok) throw new Error(`Unable to load messages (${res.status}).`);
+    const data = await res.json();
+    if (!data.success || !Array.isArray(data.messages) || !Number.isInteger(data.total) || data.total < 0) {
+      throw new Error('Invalid messages response.');
     }
-  } catch (e) {
-    console.warn('Backend messages fetch notice:', e.message);
+    messages.push(...data.messages);
+    if (messages.length >= data.total) break;
+    if (!data.messages.length) {
+      throw new Error('Incomplete messages response. Please refresh.');
+    }
   }
-
-  // Use API messages as primary source of truth
-  const merged = [...apiMessages];
-  const localContacts = getLocalContacts();
-
-  // Merge any locally stored messages that aren't already represented in the API response
-  localContacts.forEach(locMsg => {
-    const exists = merged.some(m =>
-      (m._id && locMsg._id && String(m._id) === String(locMsg._id)) ||
-      ((m.email || '').toLowerCase().trim() === (locMsg.email || '').toLowerCase().trim() &&
-        (m.message || '').trim() === (locMsg.message || '').trim())
-    );
-    if (!exists) {
-      merged.push(locMsg);
-    }
-  });
-
-  return merged;
+  return messages;
 }
 
 // ── Refresh Enquiries Button Handler ──────────────────────────
@@ -775,7 +817,8 @@ async function refreshMessages() {
     btn.classList.add('refreshing');
   }
   try {
-    await Promise.all([loadMessages(), loadStats()]);
+    const results = await Promise.all([loadMessages(), loadStats()]);
+    if (results.some(result => result === false)) throw new Error('Refresh failed');
     showToast('Enquiries refreshed from server ✓', 'info', 2500);
   } catch (err) {
     showToast('Failed to refresh enquiries from server.', 'error');
@@ -789,6 +832,7 @@ async function refreshMessages() {
 
 // ── Stats ─────────────────────────────────────────────────────
 async function loadStats() {
+  if (!adminToken) return false;
   try {
     const messages = await fetchMergedMessages();
     const events = getLocalEvents();
@@ -817,8 +861,10 @@ async function loadStats() {
     setBadge('sideBadgeRead', read);
     setBadge('sideBadgeEvents', totalEvents);
     setBadge('sideBadgeGallery', totalPhotos);
+    return true;
   } catch (err) {
     console.error('Stats error:', err);
+    return false;
   }
 }
 
@@ -840,12 +886,15 @@ function animateCount(id, target) {
 
 // ── Messages ──────────────────────────────────────────────────
 async function loadMessages() {
+  if (!adminToken) return false;
+  const version = ++messagesLoadVersion;
   const container = document.getElementById('messagesContainer');
   if (!container) return;
   container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Loading messages…</p></div>';
 
   try {
     let messages = await fetchMergedMessages();
+    if (version !== messagesLoadVersion || !adminToken) return false;
 
     // Apply Search Filter
     if (searchQuery) {
@@ -864,7 +913,7 @@ async function loadMessages() {
 
     // Apply Date Range Filter
     if (dateFrom) {
-      const from = new Date(dateFrom);
+      const from = new Date(`${dateFrom}T00:00:00`);
       messages = messages.filter(m => new Date(m.createdAt || Date.now()) >= from);
     }
     if (dateTo) {
@@ -890,7 +939,8 @@ async function loadMessages() {
       const pgArea = document.getElementById('paginationArea');
       if (pgArea) pgArea.innerHTML = '';
       if (resCount) resCount.textContent = '0 messages';
-      return;
+      currentPage = 1;
+      return true;
     }
 
     const hasFilters = searchQuery || dateFrom || dateTo;
@@ -898,8 +948,11 @@ async function loadMessages() {
       resCount.textContent = `${messages.length} message${messages.length !== 1 ? 's' : ''}${hasFilters ? ' found' : ''}`;
     }
 
-    const unread = messages.filter(m => !m.isRead);
-    const read = messages.filter(m => m.isRead);
+    const total = messages.length;
+    currentPage = Math.max(1, Math.min(currentPage, Math.ceil(total / MESSAGE_PAGE_SIZE)));
+    const pageMessages = messages.slice((currentPage - 1) * MESSAGE_PAGE_SIZE, currentPage * MESSAGE_PAGE_SIZE);
+    const unread = pageMessages.filter(m => !m.isRead);
+    const read = pageMessages.filter(m => m.isRead);
 
     let html = '';
 
@@ -932,14 +985,20 @@ async function loadMessages() {
     }
 
     container.innerHTML = html;
-    renderPagination(messages.length, 50);
-    setTimeout(loadStats, 400);
+    renderPagination(total, MESSAGE_PAGE_SIZE);
+    return true;
 
   } catch (err) {
+    if (version !== messagesLoadVersion || !adminToken) return false;
+    const pagination = document.getElementById('paginationArea');
+    if (pagination) pagination.innerHTML = '';
+    const count = document.getElementById('resultCount');
+    if (count) count.textContent = 'Messages unavailable';
     container.innerHTML = `
       <div class="empty-state">
         <p>Error loading messages. Please refresh.</p>
       </div>`;
+    return false;
   }
 }
 
@@ -956,8 +1015,8 @@ function renderMessageCard(msg, isReadSection) {
   const cbDisabled = msg.isRead ? 'disabled title="Already marked as read"' : '';
 
   return `
-    <div class="${cardClass}" id="msg-${msgId}">
-      <div class="msg-avatar">${initials}</div>
+    <div class="${cardClass}" id="msg-${escHtml(msgId)}">
+      <div class="msg-avatar">${escHtml(initials)}</div>
       <div class="msg-body">
         <div class="msg-header">
           <div class="msg-sender-row">
@@ -980,20 +1039,20 @@ function renderMessageCard(msg, isReadSection) {
         <p class="msg-text">${escHtml(msg.message || '')}</p>
 
         <div class="msg-actions">
-          <label class="mark-read-label" for="cb-${msgId}">
+          <label class="mark-read-label" for="cb-${escHtml(msgId)}">
             <input
               class="mark-read-cb"
               type="checkbox"
-              id="cb-${msgId}"
+              id="cb-${escHtml(msgId)}"
               ${cbChecked}
               ${cbDisabled}
-              onchange="handleMarkReadCheckbox(this, '${msgId}')"
+              data-id="${escHtml(msgId)}" onchange="handleMarkReadCheckbox(this, this.dataset.id)"
             >
             Mark as Read
           </label>
         </div>
       </div>
-      <button class="msg-delete-btn" onclick="openDeleteModal('${msgId}')" title="Delete message">
+      <button class="msg-delete-btn" data-id="${escHtml(msgId)}" onclick="openDeleteModal(this.dataset.id)" title="Delete message">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
           <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -1007,19 +1066,8 @@ async function handleMarkReadCheckbox(checkbox, id) {
   if (!checkbox.checked) return;
   checkbox.disabled = true;
 
-  // 1. Update in LocalStorage
-  const localContacts = getLocalContacts();
-  const updated = localContacts.map(c => {
-    if (c._id === id || c.id === id) {
-      return { ...c, isRead: true };
-    }
-    return c;
-  });
-  saveLocalContacts(updated);
-
-  // 2. Update via API
   try {
-    await fetch(`${API}/admin/messages/${id}/read`, {
+    const res = await adminFetch(`${API}/admin/messages/${encodeURIComponent(id)}/read`, {
       method: 'PATCH',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -1028,9 +1076,16 @@ async function handleMarkReadCheckbox(checkbox, id) {
       cache: 'no-store',
       signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to mark message as read.');
+    saveLocalContacts(getLocalContacts().map(c =>
+      c._id === id || c.id === id ? { ...c, isRead: true } : c));
     showToast('Message marked as read', 'info', 2000);
   } catch (err) {
-    console.warn('Mark read API notice:', err);
+    checkbox.checked = false;
+    checkbox.disabled = false;
+    showToast(err.message || 'Failed to mark message as read.', 'error');
+    return;
   }
 
   const card = document.getElementById(`msg-${id}`);
@@ -1085,20 +1140,15 @@ function closeDeleteModal() {
 
 async function confirmDelete() {
   if (!deleteTargetId) return;
+  const targetId = deleteTargetId;
   const btn = document.getElementById('confirmDeleteBtn');
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="btn-spinner"></span> Deleting…';
   }
 
-  // 1. Delete from LocalStorage
-  const localContacts = getLocalContacts();
-  const filtered = localContacts.filter(c => c._id !== deleteTargetId && c.id !== deleteTargetId);
-  saveLocalContacts(filtered);
-
-  // 2. Delete via API
   try {
-    const res = await fetch(`${API}/admin/messages/${deleteTargetId}`, {
+    const res = await adminFetch(`${API}/admin/messages/${encodeURIComponent(targetId)}`, {
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${adminToken}`,
@@ -1107,14 +1157,21 @@ async function confirmDelete() {
       cache: 'no-store',
       signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
     });
-    if (res.ok) {
-      showToast('Enquiry deleted successfully', 'success', 2500);
-    }
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.message || 'Failed to delete enquiry.');
+    saveLocalContacts(getLocalContacts().filter(c => c._id !== targetId && c.id !== targetId));
+    showToast('Enquiry deleted successfully', 'success', 2500);
   } catch (err) {
-    console.warn('Delete message API notice:', err);
+    showToast(err.message || 'Failed to delete enquiry.', 'error');
+    return;
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+    }
   }
 
-  const card = document.getElementById(`msg-${deleteTargetId}`);
+  const card = document.getElementById(`msg-${targetId}`);
   if (card) {
     card.style.transform = 'translateX(100%)';
     card.style.opacity = '0';
@@ -1157,6 +1214,8 @@ function refreshDashboard() {
     loadGallery();
   } else if (currentView === 'reviews') {
     loadReviews();
+  } else if (currentView === 'chairman') {
+    loadChairmanSettings();
   } else {
     loadMessages();
   }
@@ -1166,6 +1225,7 @@ function refreshDashboard() {
 //  EVENTS MANAGEMENT (FULL CRUD & GALLERY)
 // ══════════════════════════════════════════════════════════════
 const EVENTS_KEY = 'podhigai_events';
+let eventsCache = null;
 let deleteEventTargetId = null;
 let editingEventId = null;
 let evtSearchQuery = '';
@@ -1278,56 +1338,24 @@ const DEFAULT_ADMIN_EVENTS = [
 ];
 
 function getLocalEvents() {
+  if (eventsCache !== null) return eventsCache;
   try {
     const stored = localStorage.getItem(EVENTS_KEY);
-    if (!stored) {
-      localStorage.setItem(EVENTS_KEY, JSON.stringify(DEFAULT_ADMIN_EVENTS));
-      return DEFAULT_ADMIN_EVENTS;
-    }
-    let parsed = JSON.parse(stored);
-    if (Array.isArray(parsed) && parsed.length) {
-      // Merge any new default events
-      DEFAULT_ADMIN_EVENTS.forEach(defEvt => {
-        if (!parsed.some(e => e.id === defEvt.id)) {
-          parsed.push(defEvt);
-        }
-      });
-
-      const cleaned = parsed.map(e => {
-        if (e.coverImage && (e.coverImage.endsWith('.jpg') || e.coverImage.endsWith('.webp'))) {
-          if (e.id === 'evt_1') e.coverImage = 'images/event-technova-symposium.png';
-          else if (e.id === 'evt_2') e.coverImage = 'images/event-placement-drive.png';
-          else if (e.id === 'evt_3') e.coverImage = 'images/event-ai-cloud-workshop.png';
-          else if (e.id === 'evt_4') e.coverImage = 'images/event-robowar-mech-expo.png';
-          else if (e.id === 'evt_5') e.coverImage = 'images/event-cultural-fest.png';
-          else if (e.id === 'evt_6') e.coverImage = 'images/event-hackathon.png';
-          else if (e.id === 'evt_7') e.coverImage = 'images/gallery-campus-landscape.png';
-          else if (e.id === 'evt_8') e.coverImage = 'images/dept-eee.png';
-        }
-        if (Array.isArray(e.gallery)) {
-          e.gallery = e.gallery.map(g => {
-            if (g.endsWith('.jpg') || g.endsWith('.webp')) return 'images/event-technova-symposium.png';
-            return g;
-          });
-        }
-        return e;
-      });
-      localStorage.setItem(EVENTS_KEY, JSON.stringify(cleaned));
-      return cleaned;
-    }
-    return DEFAULT_ADMIN_EVENTS;
+    if (stored === null) return JSON.parse(JSON.stringify(DEFAULT_ADMIN_EVENTS));
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return DEFAULT_ADMIN_EVENTS;
+    return [];
   }
 }
 
 function saveLocalEvents(events) {
-  try {
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(events || []));
-  } catch { }
+  eventsCache = events || [];
+  cacheLocalValue(EVENTS_KEY, eventsCache);
 }
 
 async function loadEvents() {
+  if (!adminToken) return;
   const container = document.getElementById('eventsContainer');
   if (!container) return;
   container.innerHTML = '<div class="loading-state"><div class="spinner"></div><p>Loading events…</p></div>';
@@ -1338,8 +1366,7 @@ async function loadEvents() {
 
     // 1. Fetch authoritatively from backend API
     try {
-      const searchParam = evtSearchQuery ? `?search=${encodeURIComponent(evtSearchQuery)}` : '';
-      const res = await fetch(`${API}/admin/events${searchParam}`, {
+      const res = await adminFetch(`${API}/admin/events`, {
         headers: {
           'Authorization': `Bearer ${adminToken}`,
           'Cache-Control': 'no-cache, no-store'
@@ -1355,22 +1382,25 @@ async function loadEvents() {
           apiFetched = true;
         }
       }
+      if (!apiFetched) throw new Error('Unable to load events.');
     } catch (apiErr) {
+      if (!adminToken) return;
       console.warn('API events fetch fallback to local:', apiErr.message);
+      showToast('Events could not be refreshed. Showing cached events.', 'warning');
     }
 
-    // 2. Only fallback to local storage if API was completely unreachable
+    // Cached fallback is explicitly reported above; never use it after auth expiry.
     if (!apiFetched) {
       events = getLocalEvents();
-      if (evtSearchQuery) {
-        const q = evtSearchQuery.toLowerCase();
-        events = events.filter(e =>
-          (e.title && e.title.toLowerCase().includes(q)) ||
-          (e.venue && e.venue.toLowerCase().includes(q)) ||
-          (e.category && e.category.toLowerCase().includes(q)) ||
-          (e.description && e.description.toLowerCase().includes(q))
-        );
-      }
+    }
+    if (evtSearchQuery) {
+      const q = evtSearchQuery.toLowerCase();
+      events = events.filter(e =>
+        (e.title && e.title.toLowerCase().includes(q)) ||
+        (e.venue && e.venue.toLowerCase().includes(q)) ||
+        (e.category && e.category.toLowerCase().includes(q)) ||
+        (e.description && e.description.toLowerCase().includes(q))
+      );
     }
 
     const resultCount = document.getElementById('evtResultCount');
@@ -1406,9 +1436,9 @@ function renderAdminEventCard(e) {
   const photoCount = Array.isArray(e.gallery) ? e.gallery.length : 1;
 
   return `
-    <div class="event-admin-card ${isPub ? '' : 'draft'}" id="evt-${e.id}">
+    <div class="event-admin-card ${isPub ? '' : 'draft'}" id="evt-${escHtml(e.id)}">
       <div class="event-admin-thumb">
-        <img src="${e.coverImage || 'images/event-technova-symposium.png'}" alt="${escHtml(e.title)}">
+        <img src="${escHtml(e.coverImage || 'images/event-technova-symposium.png')}" alt="${escHtml(e.title)}">
         <span class="photo-count-badge">📷 ${photoCount} Photos</span>
       </div>
       <div class="event-admin-body">
@@ -1424,11 +1454,11 @@ function renderAdminEventCard(e) {
         </div>
         <p class="event-admin-desc">${escHtml(e.description || '')}</p>
         <div class="event-admin-actions">
-          <button class="approve-toggle-btn ${isPub ? 'unapprove' : 'approve'}" onclick="togglePublishEvent('${e.id}', ${isPub})">
+          <button class="approve-toggle-btn ${isPub ? 'unapprove' : 'approve'}" data-id="${escHtml(e.id)}" onclick="togglePublishEvent(this.dataset.id, ${isPub})">
             ${isPub ? 'Unpublish (Hide)' : 'Publish to Website'}
           </button>
-          <button class="event-edit-btn" onclick="openEditEventModal('${e.id}')">✏️ Edit Event</button>
-          <button class="review-delete-btn" onclick="openDeleteEventModal('${e.id}')" title="Delete event">
+          <button class="event-edit-btn" data-id="${escHtml(e.id)}" onclick="openEditEventModal(this.dataset.id)">✏️ Edit Event</button>
+          <button class="review-delete-btn" data-id="${escHtml(e.id)}" onclick="openDeleteEventModal(this.dataset.id)" title="Delete event">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
               <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
@@ -1606,7 +1636,9 @@ async function handleSaveEvent(e) {
 
   const payload = {
     title, date, time, venue, category, description, coverImage, featured, published,
-    gallery: [coverImage, 'images/hero-campus-entrance.png']
+    gallery: editingEventId
+      ? (getLocalEvents().find(event => event.id === editingEventId)?.gallery || [coverImage])
+      : [coverImage, 'images/hero-campus-entrance.png']
   };
 
   // Prevent double submissions
@@ -1619,7 +1651,7 @@ async function handleSaveEvent(e) {
   }
 
   try {
-    const url = editingEventId ? `${API}/admin/events/${editingEventId}` : `${API}/admin/events`;
+    const url = editingEventId ? `${API}/admin/events/${encodeURIComponent(editingEventId)}` : `${API}/admin/events`;
     const method = editingEventId ? 'PUT' : 'POST';
 
     const result = await apiRequestWithProgress({
@@ -1666,7 +1698,7 @@ async function handleSaveEvent(e) {
 async function togglePublishEvent(id, currentlyPublished) {
   try {
     const result = await apiRequestWithProgress({
-      url: `${API}/admin/events/${id}/toggle`,
+      url: `${API}/admin/events/${encodeURIComponent(id)}/toggle`,
       method: 'PATCH',
       data: { field: 'published' },
       token: adminToken
@@ -1706,7 +1738,7 @@ async function confirmDeleteEvent() {
 
   try {
     const result = await apiRequestWithProgress({
-      url: `${API}/admin/events/${deleteEventTargetId}`,
+      url: `${API}/admin/events/${encodeURIComponent(deleteEventTargetId)}`,
       method: 'DELETE',
       token: adminToken
     });
@@ -1732,6 +1764,7 @@ async function confirmDeleteEvent() {
 //  CAMPUS PHOTOS & GALLERIES MANAGEMENT (FULL CRUD)
 // ══════════════════════════════════════════════════════════════
 const GALLERY_KEY = 'podhigai_gallery';
+let galleryCache = null;
 const DELETED_PHOTOS_KEY = 'podhigai_deleted_photos';
 let deletePhotoTargetId = null;
 let editingPhotoId = null;
@@ -1741,7 +1774,8 @@ let galSearchQuery = '';
 function getDeletedPhotoIds() {
   try {
     const raw = localStorage.getItem(DELETED_PHOTOS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const ids = raw ? JSON.parse(raw) : [];
+    return Array.isArray(ids) ? ids : [];
   } catch {
     return [];
   }
@@ -1923,6 +1957,7 @@ const DEFAULT_ADMIN_GALLERY = [
 ];
 
 function getLocalGallery() {
+  if (galleryCache !== null) return galleryCache;
   const deletedIds = getDeletedPhotoIds();
   try {
     const stored = localStorage.getItem(GALLERY_KEY);
@@ -1942,9 +1977,9 @@ function getLocalGallery() {
 }
 
 function saveLocalGallery(photos) {
+  galleryCache = photos || [];
   try {
-    const deletedIds = getDeletedPhotoIds();
-    const valid = (photos || []).filter(p => !deletedIds.includes(p.id) && !deletedIds.includes(p._id));
+    const valid = galleryCache;
     localStorage.setItem(GALLERY_KEY, JSON.stringify(valid));
     try {
       window.dispatchEvent(new StorageEvent('storage', { key: GALLERY_KEY, newValue: JSON.stringify(valid) }));
@@ -1955,6 +1990,7 @@ function saveLocalGallery(photos) {
 }
 
 async function loadGallery() {
+  if (!adminToken) return;
   const container = document.getElementById('galleryContainer');
   if (!container) return;
   container.innerHTML = '<div class="loading-state" style="grid-column: 1/-1;"><div class="spinner"></div><p>Loading photos…</p></div>';
@@ -1965,7 +2001,7 @@ async function loadGallery() {
 
     // 1. Fetch authoritatively from backend API
     try {
-      const res = await fetch(`${API}/admin/gallery`, {
+      const res = await adminFetch(`${API}/admin/gallery`, {
         headers: {
           'Authorization': `Bearer ${adminToken}`,
           'Cache-Control': 'no-cache, no-store'
@@ -1981,11 +2017,14 @@ async function loadGallery() {
           apiFetched = true;
         }
       }
+      if (!apiFetched) throw new Error('Unable to load gallery.');
     } catch (apiErr) {
+      if (!adminToken) return;
       console.warn('API gallery fetch fallback notice:', apiErr.message);
+      showToast('Photos could not be refreshed. Showing cached photos.', 'warning');
     }
 
-    // 2. Only fallback to local storage if API was completely unreachable
+    // Cached fallback is explicitly reported above; never use it after auth expiry.
     if (!apiFetched) {
       allPhotos = getLocalGallery();
     }
@@ -2045,7 +2084,7 @@ async function loadGallery() {
     }
 
     // Sort all photos ascending by order (1, 2, 3...)
-    allPhotos.sort((a, b) => (Number(a.order) || 999) - (Number(b.order) || 999));
+    filtered.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 
     container.innerHTML = filtered.map(p => renderAdminPhotoCard(p)).join('');
   } catch (err) {
@@ -2074,10 +2113,10 @@ function renderAdminPhotoCard(p) {
   const orderNum = Number(p.order) || 1;
 
   return `
-    <div class="admin-photo-card" id="photoCard-${p.id || p._id}">
+    <div class="admin-photo-card" id="photoCard-${escHtml(p.id || p._id)}">
       <div class="photo-thumb-wrap">
         <img src="${escHtml(p.imageUrl || 'images/gallery-academic-complex.png')}" alt="${escHtml(p.title)}" class="photo-thumb-img" loading="lazy">
-        <span class="photo-cat-badge ${catClass}">${catLabel}</span>
+        <span class="photo-cat-badge ${escHtml(catClass)}">${escHtml(catLabel)}</span>
         <span class="photo-order-badge" title="Display Order #${orderNum}">#${orderNum}</span>
         ${isLarge ? '<span class="photo-size-badge">★ Hero Size</span>' : ''}
       </div>
@@ -2086,14 +2125,14 @@ function renderAdminPhotoCard(p) {
         <div class="photo-card-caption">${escHtml(p.caption || '')}</div>
         <div class="photo-card-footer">
           <div class="photo-order-actions" title="Shift order on website">
-            <button type="button" class="photo-order-btn" title="Move Up (Display earlier on site)" onclick="shiftPhotoOrder('${p.id || p._id}', -1)">▲</button>
-            <button type="button" class="photo-order-btn" title="Move Down (Display later on site)" onclick="shiftPhotoOrder('${p.id || p._id}', 1)">▼</button>
+            <button type="button" class="photo-order-btn" title="Move Up (Display earlier on site)" data-id="${escHtml(p.id || p._id)}" onclick="shiftPhotoOrder(this.dataset.id, -1)">▲</button>
+            <button type="button" class="photo-order-btn" title="Move Down (Display later on site)" data-id="${escHtml(p.id || p._id)}" onclick="shiftPhotoOrder(this.dataset.id, 1)">▼</button>
           </div>
           <div style="display:flex;gap:6px;">
-            <button type="button" class="photo-action-btn edit" onclick="openEditPhotoModal('${p.id || p._id}')">
+            <button type="button" class="photo-action-btn edit" data-id="${escHtml(p.id || p._id)}" onclick="openEditPhotoModal(this.dataset.id)">
               ✏️ Edit
             </button>
-            <button type="button" class="photo-action-btn delete" onclick="openDeletePhotoModal('${p.id || p._id}')">
+            <button type="button" class="photo-action-btn delete" data-id="${escHtml(p.id || p._id)}" onclick="openDeletePhotoModal(this.dataset.id)">
               🗑️ Delete
             </button>
           </div>
@@ -2103,7 +2142,7 @@ function renderAdminPhotoCard(p) {
 }
 
 async function shiftPhotoOrder(id, direction) {
-  const photos = getLocalGallery();
+  const photos = getLocalGallery().map(photo => ({ ...photo }));
   photos.sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
 
   const index = photos.findIndex(p => p.id === id || p._id === id);
@@ -2124,9 +2163,6 @@ async function shiftPhotoOrder(id, direction) {
     orderUpdates.push({ id: p.id || p._id, order: idx + 1 });
   });
 
-  saveLocalGallery(photos);
-  loadGallery();
-
   try {
     const result = await apiRequestWithProgress({
       url: `${API}/admin/gallery/reorder`,
@@ -2136,11 +2172,15 @@ async function shiftPhotoOrder(id, direction) {
     });
 
     if (result.ok) {
+      saveLocalGallery(photos);
       showToast('Photo display order updated ✓', 'info', 2000);
       window.dispatchEvent(new CustomEvent('podhigai:galleryUpdated'));
+    } else {
+      showToast(result.message || 'Failed to update photo order.', 'error');
     }
   } catch (err) {
     console.warn('Reorder API notice:', err);
+    showToast(err.message || 'Failed to update photo order.', 'error');
   }
 
   await loadGallery();
@@ -2385,7 +2425,7 @@ async function handleSavePhoto(e) {
   }
 
   try {
-    const url = editingPhotoId ? `${API}/admin/gallery/${editingPhotoId}` : `${API}/admin/gallery`;
+    const url = editingPhotoId ? `${API}/admin/gallery/${encodeURIComponent(editingPhotoId)}` : `${API}/admin/gallery`;
     const method = editingPhotoId ? 'PUT' : 'POST';
 
     const result = await apiRequestWithProgress({
@@ -2449,7 +2489,7 @@ async function confirmDeletePhoto() {
 
   try {
     const result = await apiRequestWithProgress({
-      url: `${API}/admin/gallery/${targetId}`,
+      url: `${API}/admin/gallery/${encodeURIComponent(targetId)}`,
       method: 'DELETE',
       token: adminToken
     });
@@ -2507,7 +2547,7 @@ async function loadChairmanSettings() {
       const data = await res.json();
       if (data.success && data.chairman) {
         currentChairmanData = { ...DEFAULT_CHAIRMAN, ...data.chairman };
-        localStorage.setItem(CHAIRMAN_STORAGE_KEY, JSON.stringify(currentChairmanData));
+        cacheLocalValue(CHAIRMAN_STORAGE_KEY, currentChairmanData);
       }
     }
   } catch (e) {
@@ -2603,7 +2643,6 @@ async function handleSaveChairman(e) {
   }
 
   const updated = { name, role, image };
-  currentChairmanData = updated;
 
   setButtonLoading(saveBtn, true, 'Saving…', 'Save Changes');
 
@@ -2627,7 +2666,8 @@ async function handleSaveChairman(e) {
       if (isBase64Upload) {
         completeUploadProgress('chUploadPercent', 'chProgressBar', 'chUploadHint', 'Image uploaded & saved ✓');
       }
-      localStorage.setItem(CHAIRMAN_STORAGE_KEY, JSON.stringify(updated));
+      currentChairmanData = updated;
+      cacheLocalValue(CHAIRMAN_STORAGE_KEY, updated);
       window.dispatchEvent(new CustomEvent('podhigai:chairmanUpdated', { detail: updated }));
       showToast('Chairman information updated successfully ✓', 'success');
       hideUploadProgress('chUploadProgress', 600);
@@ -2641,7 +2681,7 @@ async function handleSaveChairman(e) {
         setTimeout(() => { if (statusEl) statusEl.style.display = 'none'; }, 4500);
       }
 
-      await loadChairmanSettings();
+      updateChairmanLivePreview();
     } else {
       if (isBase64Upload) {
         failUploadProgress('chUploadProgress', 'chUploadPercent', 'chProgressBar', 'chUploadHint', result.message || 'Save failed.');
@@ -2661,9 +2701,6 @@ async function handleSaveChairman(e) {
 
 function handleResetChairman() {
   if (!confirm('Reset Chairman to default configuration (KC Ezhilarasan, images/chairman.png)?')) return;
-  currentChairmanData = { ...DEFAULT_CHAIRMAN };
-  localStorage.setItem(CHAIRMAN_STORAGE_KEY, JSON.stringify(DEFAULT_CHAIRMAN));
-  window.dispatchEvent(new CustomEvent('podhigai:chairmanUpdated', { detail: DEFAULT_CHAIRMAN }));
 
   const nameInput = document.getElementById('chNameInput');
   const roleInput = document.getElementById('chRoleInput');
@@ -2678,18 +2715,7 @@ function handleResetChairman() {
   if (fileInput) fileInput.value = '';
 
   updateChairmanLivePreview();
-
-  const statusEl = document.getElementById('chairmanSaveStatus');
-  if (statusEl) {
-    statusEl.style.display = 'block';
-    statusEl.style.background = '#EFF6FF';
-    statusEl.style.color = '#1E40AF';
-    statusEl.style.border = '1px solid #BFDBFE';
-    statusEl.innerHTML = 'ℹ️ Chairman settings restored to default.';
-    setTimeout(() => {
-      if (statusEl) statusEl.style.display = 'none';
-    }, 3500);
-  }
+  return handleSaveChairman();
 }
 
 // ── Safe Reviews Loader (Preserves Compatibility) ─────────────
@@ -2759,6 +2785,7 @@ function createDebouncedAdminTask(fn, waitMs = 250) {
     if (timeout) clearTimeout(timeout);
     timeout = setTimeout(() => {
       timeout = null;
+      if (!adminToken) return;
       fn(...args);
     }, waitMs);
   };
@@ -2996,5 +3023,3 @@ if (document.readyState === 'loading') {
 } else {
   initAdminRealTimeSync();
 }
-
-

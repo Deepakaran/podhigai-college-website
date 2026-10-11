@@ -3,12 +3,10 @@
 //  Node.js + Express + MongoDB (Mongoose)
 // ============================================================
 
-require('dotenv').config();
-const dns = require('dns');
-try {
-  dns.setDefaultResultOrder('ipv4first');
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (_) {}
+// Importing the app is side-effect free: only executable startup loads .env.
+if (require.main === module) {
+  require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+}
 
 const express = require('express');
 const http = require('http');
@@ -17,6 +15,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
+const { validateRequest, escapeRegex } = require('./validation');
 
 const app = express();
 const server = http.createServer(app);
@@ -24,31 +23,16 @@ const PORT = process.env.PORT || 3001;
 
 // ── CORS Configuration ─────────────────────────────────────────
 // Configurable via process.env.CORS_ORIGINS (comma-separated allowed origins)
-// Supports local development (localhost:5500, 127.0.0.1:5500) and Firebase Hosting domains
-const defaultAllowedOrigins = [
-  'http://localhost:5500',
-  'http://127.0.0.1:5500',
-  'http://localhost:3001',
-  'http://127.0.0.1:3001'
-];
-const envAllowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(s => s.trim()).filter(Boolean)
-  : [];
-const allowedOrigins = [...new Set([...defaultAllowedOrigins, ...envAllowedOrigins])];
-
 const isOriginAllowed = (origin) => {
   if (!origin) return true;
-  if (
-    allowedOrigins.includes(origin) ||
-    origin.endsWith('.web.app') ||
-    origin.endsWith('.firebaseapp.com')
-  ) {
-    return true;
-  }
-  if (process.env.NODE_ENV !== 'production' && (origin.includes('localhost') || origin.includes('127.0.0.1'))) {
-    return true;
-  }
-  return false;
+  const allowedOrigins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (allowedOrigins.includes(origin)) return true;
+  if (process.env.NODE_ENV !== 'development') return false;
+  try {
+    const url = new URL(origin);
+    return url.origin === origin && ['http:', 'https:'].includes(url.protocol) &&
+      ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  } catch (_) { return false; }
 };
 
 app.use(cors({
@@ -56,7 +40,7 @@ app.use(cors({
     if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    return callback(Object.assign(new Error('Origin is not allowed.'), { status: 403 }));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -65,6 +49,7 @@ app.use(cors({
 
 // ── Socket.IO Real-Time Server Configuration ──────────────────
 const io = new Server(server, {
+  allowRequest: (req, callback) => callback(null, isOriginAllowed(req.headers.origin)),
   cors: {
     origin: (origin, callback) => {
       if (isOriginAllowed(origin)) {
@@ -132,40 +117,6 @@ const loginLimiter = rateLimit({
   max: 50,
   skipSuccessfulRequests: true,
   message: { success: false, message: 'Too many failed login attempts. Please try again in 15 minutes.' }
-});
-
-// ── MongoDB Connection & Auto-Seed ─────────────────────────────
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI || !MONGODB_URI.trim()) {
-  console.error('\n❌  FATAL: MONGODB_URI is missing!');
-  console.error('    → Please define MONGODB_URI in backend/.env');
-  console.error('    → Example for MongoDB Atlas:');
-  console.error('      MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/podhigai_contacts?retryWrites=true&w=majority\n');
-  process.exit(1);
-}
-
-mongoose.connect(MONGODB_URI.trim())
-  .then(async () => {
-    const isAtlas = MONGODB_URI.includes('mongodb+srv://') || MONGODB_URI.includes('.mongodb.net');
-    console.log(`✅  MongoDB connected successfully (${isAtlas ? 'MongoDB Atlas Cloud' : 'Local MongoDB'})`);
-    console.log(`    → Database : "${mongoose.connection.name}"`);
-    console.log(`    → Host     : ${mongoose.connection.host}`);
-    await seedDefaultEvents();
-    await seedDefaultGallery();
-  })
-  .catch(err => {
-    console.error('❌  MongoDB connection error:', err.message);
-    console.error('    → Check MONGODB_URI in backend/.env');
-    console.error('    → If using MongoDB Atlas, check your Database User credentials & Network Access (IP Whitelist).');
-  });
-
-mongoose.connection.on('error', (err) => {
-  console.error('❌  MongoDB runtime connection error:', err.message);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('⚠️  MongoDB disconnected.');
 });
 
 // ── Contact Schema & Model ────────────────────────────────────
@@ -503,22 +454,36 @@ async function seedDefaultGallery() {
 }
 
 // ── Helper: Secure Token Auth ─────────────────────────────────
-function generateToken(username, password) {
-  const secret = process.env.JWT_SECRET || 'podhigai_secure_auth_token_key_2026';
-  const payload = `${username}:${password}:${secret}`;
+function authConfig() {
+  const username = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+  const password = process.env.ADMIN_PASSWORD;
+  const secret = (process.env.JWT_SECRET || '').trim();
+  if (!username || !password || !password.trim() || !secret) {
+    throw new Error('ADMIN_USERNAME, ADMIN_PASSWORD and JWT_SECRET must be configured.');
+  }
+  if (username.length > 100 || password.length > 1024) {
+    throw new Error('Admin credentials exceed the supported length.');
+  }
+  return { username, password, secret };
+}
+
+function generateToken(username, password, secret) {
+  const payload = JSON.stringify([username, password]);
   return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
 
 function verifyToken(req) {
   const authHeader = req.headers['authorization'] || '';
-  const token = authHeader.replace('Bearer ', '').trim();
-  if (!token) return false;
-  const expected = generateToken(
-    process.env.ADMIN_USERNAME || 'Admin123',
-    process.env.ADMIN_PASSWORD || 'Admin@2719'
-  );
-  return token === expected;
+  const match = /^Bearer ([a-f\d]{64})$/i.exec(authHeader);
+  if (!match) return false;
+  try {
+    const { username, password, secret } = authConfig();
+    const expected = generateToken(username, password, secret);
+    return crypto.timingSafeEqual(Buffer.from(match[1], 'hex'), Buffer.from(expected, 'hex'));
+  } catch (_) { return false; }
 }
+
+app.use(validateRequest);
 
 // ════════════════════════════════════════════════════════════════
 //  ROUTES
@@ -596,8 +561,10 @@ app.post('/api/admin/login', loginLimiter, (req, res) => {
     return res.status(400).json({ success: false, message: 'Username and password are required.' });
   }
 
-  const expectedUsername = (process.env.ADMIN_USERNAME || 'Admin123').trim();
-  const expectedPassword = (process.env.ADMIN_PASSWORD || 'Admin@2719').trim();
+  let config;
+  try { config = authConfig(); }
+  catch (_) { return res.status(503).json({ success: false, message: 'Admin authentication is not configured.' }); }
+  const { username: expectedUsername, password: expectedPassword, secret } = config;
 
   const userMatch = username.trim().toLowerCase() === expectedUsername.toLowerCase();
   const passMatch = password === expectedPassword;
@@ -606,7 +573,7 @@ app.post('/api/admin/login', loginLimiter, (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid username or password.' });
   }
 
-  const token = generateToken(expectedUsername, expectedPassword);
+  const token = generateToken(expectedUsername, expectedPassword, secret);
   res.json({ success: true, token, username: expectedUsername });
 });
 
@@ -644,7 +611,7 @@ app.get('/api/admin/messages', async (req, res) => {
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
       if (dateTo) {
         const to = new Date(dateTo);
-        to.setHours(23, 59, 59, 999);
+        to.setUTCHours(23, 59, 59, 999);
         filter.createdAt.$lte = to;
       }
     }
@@ -668,7 +635,8 @@ app.patch('/api/admin/messages/:id/read', async (req, res) => {
   if (!verifyToken(req)) return res.status(401).json({ success: false, message: 'Unauthorized.' });
 
   try {
-    await Contact.findByIdAndUpdate(req.params.id, { isRead: true });
+    const updated = await Contact.findByIdAndUpdate(req.params.id, { isRead: true });
+    if (!updated) return res.status(404).json({ success: false, message: 'Message not found.' });
     broadcastUpdate('messages', 'read', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
@@ -785,16 +753,12 @@ app.post('/api/admin/events', async (req, res) => {
     if (!title || !title.trim()) return res.status(400).json({ success: false, message: 'Event title is required.' });
     if (!date || !date.trim()) return res.status(400).json({ success: false, message: 'Event date is required.' });
 
-    const existing = await Event.findOne({ title: { $regex: `^${title.trim()}$`, $options: 'i' } });
+    const existing = await Event.findOne({ title: { $regex: `^${escapeRegex(title)}$`, $options: 'i' } });
     if (existing) {
       return res.status(400).json({ success: false, message: 'An event with this title already exists.' });
     }
 
-    if (featured) {
-      await Event.updateMany({}, { featured: false });
-    }
-
-    const eventId = 'evt_' + Date.now();
+    const eventId = 'evt_' + crypto.randomUUID();
     const event = new Event({
       id: eventId,
       title: title.trim(),
@@ -810,6 +774,7 @@ app.post('/api/admin/events', async (req, res) => {
     });
 
     await event.save();
+    if (event.featured) await Event.updateMany({ _id: { $ne: event._id } }, { featured: false });
     console.log(`🎉 New event created: "${title}" [${eventId}]`);
     broadcastUpdate('events', 'created', { id: event.id });
     res.status(201).json({ success: true, message: 'Event created successfully.', event });
@@ -824,30 +789,14 @@ app.put('/api/admin/events/:id', async (req, res) => {
   if (!verifyToken(req)) return res.status(401).json({ success: false, message: 'Unauthorized.' });
   try {
     const eventId = req.params.id;
-    const { title, date, time, venue, category, description, featured, published, coverImage, gallery } = req.body;
-
-    if (featured) {
-      await Event.updateMany({ id: { $ne: eventId } }, { featured: false });
-    }
-
     const updated = await Event.findOneAndUpdate(
       { $or: [{ id: eventId }, { _id: mongoose.isValidObjectId(eventId) ? eventId : null }] },
-      {
-        ...(title ? { title: title.trim() } : {}),
-        ...(date ? { date: date.trim() } : {}),
-        time: time !== undefined ? time.trim() : '',
-        venue: venue !== undefined ? venue.trim() : '',
-        category: category !== undefined ? category.trim() : 'General',
-        description: description !== undefined ? description.trim() : '',
-        ...(featured !== undefined ? { featured: Boolean(featured) } : {}),
-        ...(published !== undefined ? { published: Boolean(published) } : {}),
-        ...(coverImage ? { coverImage: coverImage.trim() } : {}),
-        ...(gallery ? { gallery } : {})
-      },
-      { new: true }
+      { $set: req.body },
+      { new: true, runValidators: true }
     );
 
     if (!updated) return res.status(404).json({ success: false, message: 'Event not found.' });
+    if (req.body.featured === true) await Event.updateMany({ _id: { $ne: updated._id } }, { featured: false });
     broadcastUpdate('events', 'updated', { id: updated.id });
     res.json({ success: true, message: 'Event updated successfully.', event: updated });
   } catch (err) {
@@ -886,15 +835,13 @@ app.patch('/api/admin/events/:id/toggle', async (req, res) => {
 
     if (field === 'featured') {
       const willBeFeatured = !event.featured;
-      if (willBeFeatured) {
-        await Event.updateMany({}, { featured: false });
-      }
       event.featured = willBeFeatured;
     } else {
       event.published = !event.published;
     }
 
     await event.save();
+    if (field === 'featured' && event.featured) await Event.updateMany({ _id: { $ne: event._id } }, { featured: false });
     broadcastUpdate('events', 'toggled', { id: event.id, field });
     res.json({ success: true, event });
   } catch (err) {
@@ -967,7 +914,7 @@ app.post('/api/admin/gallery', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Photo image URL or upload is required.' });
     }
 
-    const photoId = 'photo_' + Date.now();
+    const photoId = 'photo_' + crypto.randomUUID();
     const photo = new GalleryPhoto({
       id: photoId,
       title: title.trim(),
@@ -1019,27 +966,16 @@ app.put('/api/admin/gallery/:id', async (req, res) => {
   if (!verifyToken(req)) return res.status(401).json({ success: false, message: 'Unauthorized.' });
   try {
     const photoId = req.params.id;
-    const { title, caption, imageUrl, category, size, order } = req.body;
-
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Photo title is required.' });
-    }
-
+    const update = { ...req.body };
+    if (update.category !== undefined) update.category = update.category.toLowerCase();
     const updated = await GalleryPhoto.findOneAndUpdate(
       { $or: [{ id: photoId }, { _id: mongoose.isValidObjectId(photoId) ? photoId : null }] },
-      {
-        title: title.trim(),
-        ...(caption !== undefined ? { caption: caption.trim() } : {}),
-        ...(imageUrl ? { imageUrl: imageUrl.trim() } : {}),
-        ...(category ? { category: category.trim().toLowerCase() } : {}),
-        ...(size !== undefined ? { size: size === 'large' ? 'large' : 'normal' } : {}),
-        ...(order !== undefined ? { order: Number(order) } : {})
-      },
-      { new: true }
+      { $set: update },
+      { new: true, runValidators: true }
     );
 
     if (!updated) return res.status(404).json({ success: false, message: 'Photo not found.' });
-    console.log(`📸 Campus photo updated: "${title}" [${photoId}]`);
+    console.log(`📸 Campus photo updated: [${photoId}]`);
     broadcastUpdate('gallery', 'updated', { id: updated.id });
     res.json({ success: true, message: 'Photo updated successfully.', photo: updated });
   } catch (err) {
@@ -1077,10 +1013,10 @@ app.get('/api/reviews', async (req, res) => {
     const filter = { approved: true };
     if (rating >= 1 && rating <= 5) filter.rating = rating;
 
-    const reviews = await Review.find(filter).sort({ createdAt: -1 }).lean();
+    const reviews = await Review.find(filter).select('-ip').sort({ createdAt: -1 }).lean();
 
     // Build breakdown & average
-    const allForStats = await Review.find({ approved: true }).lean();
+    const allForStats = await Review.find({ approved: true }).select('rating').lean();
     const total = allForStats.length;
     const avg = total > 0
       ? (allForStats.reduce((s, r) => s + r.rating, 0) / total).toFixed(1)
@@ -1116,7 +1052,9 @@ app.post('/api/reviews', reviewLimiter, async (req, res) => {
     await review.save();
     console.log(`⭐ New review from: ${name} (${rating} stars - ${title})`);
     broadcastUpdate('reviews', 'created', { id: review._id });
-    res.status(201).json({ success: true, message: 'Review submitted successfully.', review });
+    const publicReview = review.toObject();
+    delete publicReview.ip;
+    res.status(201).json({ success: true, message: 'Review submitted successfully.', review: publicReview });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error.' });
   }
@@ -1176,14 +1114,14 @@ app.patch('/api/admin/reviews/:id/approve', async (req, res) => {
 // ── Chairman Schema & Model ───────────────────────────────────
 const chairmanSchema = new mongoose.Schema({
   key: { type: String, unique: true, default: 'main_chairman' },
-  name: { type: String, default: 'KC Ezhilarasan' },
-  role: { type: String, default: 'College Chairman' },
+  name: { type: String, trim: true, maxlength: 100, default: 'KC Ezhilarasan' },
+  role: { type: String, trim: true, maxlength: 200, default: 'College Chairman' },
   image: { type: String, default: 'images/chairman.png' }
 }, { timestamps: true });
 
 const Chairman = mongoose.models.Chairman || mongoose.model('Chairman', chairmanSchema);
 
-let memChairman = {
+const defaultChairman = {
   name: 'KC Ezhilarasan',
   role: 'College Chairman',
   image: 'images/chairman.png'
@@ -1194,11 +1132,11 @@ app.get('/api/chairman', async (req, res) => {
   try {
     let chairman = await Chairman.findOne({ key: 'main_chairman' }).lean();
     if (!chairman) {
-      chairman = memChairman;
+      chairman = defaultChairman;
     }
     res.json({ success: true, chairman });
   } catch (err) {
-    res.json({ success: true, chairman: memChairman });
+    res.status(500).json({ success: false, message: 'Server error fetching chairman settings.' });
   }
 });
 
@@ -1206,34 +1144,56 @@ app.get('/api/chairman', async (req, res) => {
 app.post('/api/admin/chairman', async (req, res) => {
   if (!verifyToken(req)) return res.status(401).json({ success: false, message: 'Unauthorized.' });
   try {
-    const { name, role, image } = req.body;
-    memChairman = {
-      name: name || 'KC Ezhilarasan',
-      role: role || 'College Chairman',
-      image: image || 'images/chairman.png'
-    };
-    try {
-      const updated = await Chairman.findOneAndUpdate(
-        { key: 'main_chairman' },
-        { name: memChairman.name, role: memChairman.role, image: memChairman.image },
-        { upsert: true, new: true }
-      ).lean();
-      broadcastUpdate('chairman', 'updated');
-      return res.json({ success: true, chairman: updated });
-    } catch (dbErr) {
-      broadcastUpdate('chairman', 'updated');
-      return res.json({ success: true, chairman: memChairman });
-    }
+    const updated = await Chairman.findOneAndUpdate(
+      { key: 'main_chairman' },
+      { $set: req.body },
+      { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+    ).lean();
+    broadcastUpdate('chairman', 'updated');
+    return res.json({ success: true, chairman: updated });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error saving chairman settings.' });
   }
 });
 
-// ── Start server ──────────────────────────────────────────────
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀  Podhigai Contact API`);
-  console.log(`    → Port     : ${PORT}`);
-  console.log(`    → Health   : http://0.0.0.0:${PORT}/api/health`);
-  console.log(`    → Admin    : open admin.html in browser\n`);
+// Body parser and CORS failures must use the same JSON error contract.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status === 413 ? 413 : err.status === 403 ? 403 : err.status === 400 ? 400 : 500;
+  res.status(status).json({ success: false, message: status === 500 ? 'Server error.' : status === 413 ? 'Request body is too large.' : status === 403 ? 'Origin is not allowed.' : 'Invalid request body.' });
 });
 
+// ── Start server ──────────────────────────────────────────────
+async function start() {
+  authConfig();
+  const uri = (process.env.MONGODB_URI || '').trim();
+  if (!uri) throw new Error('MONGODB_URI must be configured in backend/.env.');
+  const dns = require('dns');
+  try {
+    dns.setDefaultResultOrder('ipv4first');
+  } catch (_) {}
+  await mongoose.connect(uri);
+  // Seeding is opt-in: intentionally deleting every item must survive a restart.
+  if (process.env.SEED_DEFAULT_CONTENT === 'true') {
+    await seedDefaultEvents();
+    await seedDefaultGallery();
+  }
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, '0.0.0.0', () => {
+      server.removeListener('error', reject);
+      console.log(`Podhigai Contact API listening on port ${PORT}`);
+      resolve(server);
+    });
+  });
+}
+
+if (require.main === module) {
+  start().catch(async err => {
+    console.error('Backend startup failed:', err.message);
+    await mongoose.disconnect();
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { app, server, io, start, authConfig, isOriginAllowed, models: { Contact, Event, GalleryPhoto, Review, Chairman } };

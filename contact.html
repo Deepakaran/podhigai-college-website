@@ -513,6 +513,7 @@
       const message = document.getElementById('cf-message').value.trim();
       const btn = document.getElementById('cf-submit');
       const statusBox = document.getElementById('cf-status-box');
+      if (btn.disabled) return;
 
       if (!name) { 
         showToast('⚠️ Please enter your full name.', 'error');
@@ -520,7 +521,7 @@
         document.getElementById('cf-name').focus();
         return; 
       }
-      if (!email) { 
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         showToast('⚠️ Please enter your email address.', 'error');
         showStatus('⚠️ Please enter your email address.', 'error');
         document.getElementById('cf-email').focus();
@@ -531,26 +532,6 @@
         showStatus('⚠️ Please enter your enquiry message.', 'error');
         document.getElementById('cf-message').focus();
         return; 
-      }
-
-      // Save locally to localStorage so it is guaranteed to show up in Admin Panel
-      const contactItem = {
-        _id: 'c_' + Date.now(),
-        name,
-        email,
-        phone: phone || 'Not Provided',
-        subject: subject || 'General / Admissions Enquiry',
-        message,
-        createdAt: new Date().toISOString(),
-        isRead: false
-      };
-
-      try {
-        const stored = JSON.parse(localStorage.getItem('podhigai_contacts') || '[]');
-        stored.unshift(contactItem);
-        localStorage.setItem('podhigai_contacts', JSON.stringify(stored));
-      } catch (e) {
-        console.warn('LocalStorage save error:', e);
       }
 
       btn.disabled = true;
@@ -567,11 +548,11 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, email, phone, subject, message }),
-          signal: AbortSignal.timeout ? AbortSignal.timeout(4000) : undefined
+          signal: AbortSignal.timeout ? AbortSignal.timeout(15000) : undefined
         });
         const data = await res.json();
 
-        if (data.success) {
+        if (res.ok && data.success === true) {
           showStatus('✓ Success! Your message has been sent. Our admissions team will reach out shortly.', 'success');
           showToast('✓ Message sent! Our admissions team will contact you shortly.', 'success');
           ['cf-name', 'cf-email', 'cf-phone', 'cf-subject', 'cf-message'].forEach(id => {
@@ -585,13 +566,9 @@
           btn.innerHTML = 'Submit Message &rarr;';
         }
       } catch (err) {
-        showStatus('✓ Message saved! Our admissions office will get in touch with you shortly.', 'success');
-        showToast('✓ Message recorded! We will reach out to you soon.', 'success');
-        ['cf-name', 'cf-email', 'cf-phone', 'cf-subject', 'cf-message'].forEach(id => {
-          const el = document.getElementById(id);
-          if (el) el.value = '';
-        });
-        btn.innerHTML = '✓ Message Recorded';
+        showStatus('Unable to confirm delivery. Your entries have been kept. Please check your connection and try again.', 'error');
+        showToast('Delivery was not confirmed. Please try again.', 'error');
+        btn.innerHTML = 'Submit Message &rarr;';
       } finally {
         btn.disabled = false;
         setTimeout(() => {
