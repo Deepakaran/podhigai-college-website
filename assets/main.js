@@ -306,8 +306,9 @@ document.addEventListener('DOMContentLoaded', () => {
      4. SCROLL REVEALS
      -------------------------------------------------------------------------- */
   const revealEls = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
+  let revealObserver = null;
   if (hasIntersectionObserver) {
-    const revealObserver = new window.IntersectionObserver((entries) => {
+    revealObserver = new window.IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
           entry.target.classList.add('visible');
@@ -2512,10 +2513,14 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // 5. Trigger intersection observer for smooth reveal animations
-    document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale').forEach(el => {
-      revealObserver.observe(el);
-    });
+    // 5. Trigger intersection observer for smooth reveal animations on newly injected cards
+    if (revealObserver) {
+      document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale').forEach(el => {
+        if (!el.classList.contains('visible')) revealObserver.observe(el);
+      });
+    } else {
+      document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale').forEach(el => el.classList.add('visible'));
+    }
   };
 
   const fetchLiveEvents = async () => {

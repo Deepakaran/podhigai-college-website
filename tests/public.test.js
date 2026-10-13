@@ -124,6 +124,7 @@ test('event render uses current API state, escapes content and clears a removed 
   const context = vm.createContext({
     currentEvents: [{ id: 'event-1', title: '<img src=x onerror=alert(1)>', coverImage: 'x" onerror="alert(1)', featured: true }],
     isEventsExpanded: false, INITIAL_EVENT_COUNT: 4,
+    revealObserver: null,
     getEvents() { throw Error('Must not overwrite API state with stale storage'); },
     document: { getElementById(id) { return id === 'featuredEventCard' ? featured : id === 'eventsGrid' ? grid : null; }, querySelectorAll() { return []; } }
   });

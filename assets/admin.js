@@ -835,8 +835,50 @@ async function loadStats() {
   if (!adminToken) return false;
   try {
     const messages = await fetchMergedMessages();
-    const events = getLocalEvents();
-    const gallery = getLocalGallery();
+
+    // Fetch real-time counts from the API (not stale localStorage)
+    let totalEvents = 0;
+    let totalPhotos = 0;
+    try {
+      const [evtRes, galRes] = await Promise.all([
+        adminFetch(`${API}/admin/events`, {
+          headers: { 'Authorization': `Bearer ${adminToken}`, 'Cache-Control': 'no-cache, no-store' },
+          cache: 'no-store',
+          signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined
+        }),
+        adminFetch(`${API}/gallery`, {
+          headers: { 'Authorization': `Bearer ${adminToken}`, 'Cache-Control': 'no-cache, no-store' },
+          cache: 'no-store',
+          signal: AbortSignal.timeout ? AbortSignal.timeout(10000) : undefined
+        })
+      ]);
+      if (evtRes.ok) {
+        const evtData = await evtRes.json();
+        if (evtData.success && Array.isArray(evtData.events)) {
+          totalEvents = evtData.events.length;
+          saveLocalEvents(evtData.events); // keep cache in sync
+        } else {
+          totalEvents = getLocalEvents().length;
+        }
+      } else {
+        totalEvents = getLocalEvents().length;
+      }
+      if (galRes.ok) {
+        const galData = await galRes.json();
+        const galArr = galData.success && Array.isArray(galData.photos) ? galData.photos : (Array.isArray(galData) ? galData : null);
+        if (galArr) {
+          totalPhotos = galArr.length;
+        } else {
+          totalPhotos = getLocalGallery().length;
+        }
+      } else {
+        totalPhotos = getLocalGallery().length;
+      }
+    } catch (apiErr) {
+      // API unreachable — fall back to cached data
+      totalEvents = getLocalEvents().length;
+      totalPhotos = getLocalGallery().length;
+    }
 
     const total = messages.length;
     const unread = messages.filter(m => !m.isRead).length;
@@ -844,8 +886,6 @@ async function loadStats() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayCount = messages.filter(m => new Date(m.createdAt || Date.now()) >= today).length;
-    const totalEvents = events.length;
-    const totalPhotos = gallery.length;
 
     animateCount('statTotal', total);
     animateCount('statUnread', unread);
@@ -867,6 +907,7 @@ async function loadStats() {
     return false;
   }
 }
+
 
 function animateCount(id, target) {
   const el = document.getElementById(id);

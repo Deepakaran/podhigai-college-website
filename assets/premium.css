@@ -38,8 +38,9 @@ body::before {
   box-shadow: 0 10px 30px rgba(7,26,47,.04);
   backdrop-filter: blur(18px) saturate(140%);
 }
+/* scrolled state kept dark — overridden by Nebula layer below */
 .nav.inst-nav.pcet-scrolled,
-.nav.inst-nav.scrolled { background: rgba(255,255,255,.95); border-bottom-color: var(--premium-line); box-shadow: 0 14px 38px rgba(7,26,47,.11); }
+.nav.inst-nav.scrolled { background: rgba(10,10,20,.97); border-bottom-color: rgba(255,255,255,.12); box-shadow: 0 14px 38px rgba(0,0,0,.28); }
 .brand-title { color: var(--premium-ink); letter-spacing: -.04em; }
 .brand-sub { color: #506177; letter-spacing: .035em; }
 .nav-item { position: relative; font-weight: 700; color: #40546c; }
@@ -256,10 +257,12 @@ section {
 
 header.nav,
 header.nav.scrolled,
-.nav.inst-nav {
-  background: rgba(10, 10, 20, .91);
-  border-bottom: 1px solid rgba(255, 255, 255, .1);
-  box-shadow: 0 12px 34px rgba(9, 7, 28, .18);
+.nav.inst-nav,
+.nav.inst-nav.scrolled,
+.nav.inst-nav.pcet-scrolled {
+  background: rgba(10, 10, 20, .93) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, .1) !important;
+  box-shadow: 0 12px 34px rgba(9, 7, 28, .22) !important;
   backdrop-filter: blur(20px) saturate(145%);
   -webkit-backdrop-filter: blur(20px) saturate(145%);
 }
