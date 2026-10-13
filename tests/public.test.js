@@ -23,6 +23,24 @@ test('all public HTML script and local asset/link targets exist', () => {
   assert.deepEqual(missing, []);
 });
 
+test('all public pages load the shared premium layer and motion engine', () => {
+  const publicPages = pages.filter(page => page !== 'admin.html' && !page.startsWith('public/'));
+  for (const page of publicPages) {
+    const html = fs.readFileSync(path.join(root, page), 'utf8');
+    const prefix = page.includes('/') ? '../assets/' : 'assets/';
+    assert.match(html, new RegExp(`href=["']${prefix}premium\\.css["']`), page);
+    assert.match(html, new RegExp(`src=["']${prefix}animations\\.js["']`), page);
+  }
+});
+
+test('premium layer contains responsive and reduced-motion safeguards', () => {
+  const premium = fs.readFileSync(path.join(root, 'assets/premium.css'), 'utf8');
+  assert.match(premium, /@media \(max-width: 767px\)/);
+  assert.match(premium, /@media \(max-width: 380px\)/);
+  assert.match(premium, /prefers-reduced-motion: reduce/);
+  assert.match(premium, /overflow/);
+});
+
 test('public JavaScript and inline scripts parse', () => {
   for (const file of fs.readdirSync(path.join(root, 'assets')).filter(p => p.endsWith('.js'))) {
     new vm.Script(fs.readFileSync(path.join(root, 'assets', file), 'utf8'), { filename: file });
@@ -136,4 +154,204 @@ test('chat opened on mobile releases its fixed-position scroll lock after deskto
   vm.runInContext('closeChat();', context);
   assert.equal(style.position, '');
   assert.equal(style.overflow, '');
+});
+
+test('public interaction fallbacks cover unsupported observers, keyboard FAQ and breakpoint drawer cleanup', () => {
+  assert.match(main, /typeof window\.IntersectionObserver === 'function'/);
+  assert.match(main, /window\.innerWidth >= 1024/);
+  assert.match(main, /question\.setAttribute\('role', 'button'\)/);
+  assert.match(main, /event\.key !== 'Enter' && event\.key !== ' '/);
+  assert.match(main, /aria-expanded', 'true'/);
+  assert.match(main, /aria-expanded', 'false'/);
+});
+
+test('mobile event presentation retains event times and respects reduced motion', () => {
+  const carousel = fs.readFileSync(path.join(root, 'assets/mobile-carousel.js'), 'utf8');
+  assert.match(carousel, /event\.time/);
+  assert.match(carousel, /prefers-reduced-motion: reduce/);
+  assert.match(carousel, /regularEvents\.length <= 1 \|\| prefersReducedMotion\(\)/);
+});
+
+test('nebula visual layer defines the responsive design system and final reduced-motion guard', () => {
+  const premium = fs.readFileSync(path.join(root, 'assets/premium.css'), 'utf8');
+  assert.match(premium, /PODHIGAI \/ NEBULA PUBLIC EXPERIENCE/);
+  assert.match(premium, /@media \(max-width: 1023px\)/);
+  assert.match(premium, /@media \(max-width: 767px\)/);
+  assert.match(premium, /@media \(max-width: 480px\)/);
+  assert.match(premium, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test('motion fallbacks reveal counters and elements without IntersectionObserver', () => {
+  const counterAttrs = { 'data-target': '42' };
+  const counter = {
+    textContent: '42+',
+    getAttribute(name) { return counterAttrs[name] ?? null; },
+    setAttribute(name, value) { counterAttrs[name] = String(value); }
+  };
+  const revealed = new Set();
+  const reveal = { classList: { add(name) { revealed.add(name); } } };
+  const context = vm.createContext({
+    window: {},
+    document: {
+      querySelectorAll(selector) {
+        return selector.includes('.counter') ? [counter] : [reveal];
+      }
+    }
+  });
+  const block = main.slice(main.indexOf('  const animateCounter ='), main.indexOf('  /* --------------------------------------------------------------------------\n     5.'));
+
+  assert.doesNotThrow(() => vm.runInContext(block, context));
+  assert.equal(counter.textContent, '42+');
+  assert.equal(counterAttrs['data-animated'], 'true');
+  assert.ok(revealed.has('visible'));
+});
+
+test('mobile drawer closes and restores body scroll at the 1024px boundary', () => {
+  const makeClassList = () => {
+    const values = new Set();
+    return {
+      add(value) { values.add(value); },
+      remove(value) { values.delete(value); },
+      contains(value) { return values.has(value); }
+    };
+  };
+  const makeElement = (id) => {
+    const listeners = {};
+    const attributes = {};
+    return {
+      id,
+      style: {},
+      classList: makeClassList(),
+      attributes,
+      listeners,
+      contains() { return false; },
+      querySelectorAll() { return []; },
+      addEventListener(type, handler) { listeners[type] = handler; },
+      setAttribute(name, value) { attributes[name] = String(value); }
+    };
+  };
+  const mobileToggle = makeElement('mobileToggle');
+  const mobileDrawer = makeElement('mobileDrawer');
+  const backdrop = makeElement('drawerBackdrop');
+  const body = { style: {}, appendChild() {} };
+  let resizeHandler;
+  const context = vm.createContext({
+    navHeader: null,
+    mobileToggle,
+    mobileDrawer,
+    window: {
+      innerWidth: 1023,
+      addEventListener(type, handler) { if (type === 'resize') resizeHandler = handler; }
+    },
+    document: {
+      body,
+      querySelector() { return backdrop; },
+      addEventListener() {}
+    }
+  });
+  const block = main.slice(main.indexOf('  if (mobileToggle && mobileDrawer) {'), main.indexOf('  /* --------------------------------------------------------------------------\n     1.1 SEARCH'));
+  vm.runInContext(block, context);
+
+  assert.equal(mobileToggle.attributes['aria-controls'], 'mobileDrawer');
+  assert.equal(mobileDrawer.attributes['aria-hidden'], 'true');
+  mobileToggle.listeners.click({ stopPropagation() {} });
+  assert.equal(body.style.overflow, 'hidden');
+  assert.equal(mobileToggle.attributes['aria-expanded'], 'true');
+  assert.equal(mobileDrawer.attributes['aria-hidden'], 'false');
+
+  context.window.innerWidth = 1024;
+  resizeHandler();
+  assert.equal(mobileDrawer.classList.contains('open'), false);
+  assert.equal(body.style.overflow, '');
+  assert.equal(mobileToggle.attributes['aria-expanded'], 'false');
+  assert.equal(mobileDrawer.attributes['aria-hidden'], 'true');
+});
+
+test('non-button FAQ questions respond to keyboard activation and retain click behavior', () => {
+  const makeClassList = () => {
+    const values = new Set();
+    return {
+      add(value) { values.add(value); },
+      remove(value) { values.delete(value); },
+      contains(value) { return values.has(value); }
+    };
+  };
+  const itemClassList = makeClassList();
+  const attributes = {};
+  const listeners = {};
+  const question = {
+    tagName: 'DIV',
+    addEventListener(type, handler) { listeners[type] = handler; },
+    setAttribute(name, value) { attributes[name] = String(value); }
+  };
+  const answer = { style: {}, scrollHeight: 48 };
+  const item = {
+    classList: itemClassList,
+    querySelector(selector) {
+      return selector.includes('faq-a') ? answer : question;
+    }
+  };
+  const context = vm.createContext({
+    document: { querySelectorAll() { return [item]; } }
+  });
+  const block = main.slice(main.indexOf('  const faqItems ='), main.indexOf('  /* --------------------------------------------------------------------------\n     3.'));
+  vm.runInContext(block, context);
+
+  let prevented = false;
+  listeners.keydown({ key: 'Enter', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(itemClassList.contains('open'), true);
+  assert.equal(attributes['role'], 'button');
+  assert.equal(attributes['tabindex'], '0');
+  assert.equal(attributes['aria-expanded'], 'true');
+  assert.equal(answer.style.maxHeight, '48px');
+
+  listeners.click();
+  assert.equal(itemClassList.contains('open'), false);
+  assert.equal(attributes['aria-expanded'], 'false');
+  assert.equal(answer.style.maxHeight, null);
+});
+
+test('robot dock aria state tracks chatbot open and close state', () => {
+  const makeClassList = () => {
+    const values = new Set();
+    return {
+      add(value) { values.add(value); },
+      remove(value) { values.delete(value); },
+      contains(value) { return values.has(value); }
+    };
+  };
+  const robotDock = {
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    removeAttribute(name) { delete this.attributes[name]; },
+    addEventListener() {}
+  };
+  const chatWindow = { id: 'chatWindow', classList: makeClassList() };
+  const elements = { robotDock, chatWindow };
+  const context = vm.createContext({
+    window: { innerWidth: 1200, location: { pathname: '/' } },
+    document: {
+      body: { style: {} },
+      documentElement: { style: {} },
+      getElementById(id) { return elements[id] || null; },
+      addEventListener() {}
+    },
+    clearTimeout() {},
+    setTimeout() { return 0; },
+    tipTimer: null,
+    hideTooltip() {},
+    cyclePrompts() {}
+  });
+  const accessibilityBlock = main.slice(main.indexOf('  const robotDock ='), main.indexOf('  // Dynamic Page Link Helper'));
+  vm.runInContext(accessibilityBlock, context);
+  assert.equal(robotDock.attributes['aria-controls'], 'chatWindow');
+  assert.equal(robotDock.attributes['aria-expanded'], 'false');
+
+  const chatBlock = main.slice(main.indexOf('  let savedScrollY ='), main.indexOf("  robotDock?.addEventListener('click'"));
+  vm.runInContext(chatBlock, context);
+  vm.runInContext('openChat();', context);
+  assert.equal(robotDock.attributes['aria-expanded'], 'true');
+  vm.runInContext('closeChat();', context);
+  assert.equal(robotDock.attributes['aria-expanded'], 'false');
 });

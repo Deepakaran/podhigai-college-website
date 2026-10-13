@@ -334,3 +334,129 @@
     transform: translateY(0);
   }
 }
+
+/* --------------------------------------------------------------------------
+   5. COHERENT PAGE ORCHESTRATION & ACCESSIBLE MICRO-INTERACTIONS
+   -------------------------------------------------------------------------- */
+:root {
+  scroll-behavior: smooth;
+}
+
+@keyframes pcetPageElementIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pcetDrawerItemIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* These page-banner transitions are CSS-first so the public pages still get
+   a restrained entrance when the optional behaviour layer is not loaded. */
+.page-banner .breadcrumb {
+  animation: pcetPageElementIn 0.5s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.page-banner h1 {
+  animation: pcetPageElementIn 0.65s 80ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.page-banner p {
+  animation: pcetPageElementIn 0.55s 180ms var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+header.nav.pcet-scrolled,
+header.nav.scrolled {
+  box-shadow: 0 6px 24px rgba(11, 37, 69, 0.09);
+}
+
+header.nav.pcet-at-top {
+  box-shadow: none;
+}
+
+.inst-links .nav-item:focus-visible,
+.mobile-drawer nav a:focus-visible,
+.brand:focus-visible,
+.mobile-toggle:focus-visible {
+  outline: 2px solid var(--gold-500, #e9a52f);
+  outline-offset: 4px;
+}
+
+.inst-links .nav-item::after {
+  transform-origin: left center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .inst-links .nav-item:hover {
+    transform: translateY(-1px);
+  }
+
+  :where(.cta-btn, .nav-signup-pill, .admin-nav-btn, .uv-btn-tour, .uv-btn-learn):hover {
+    filter: brightness(1.035);
+  }
+
+  :where(.academic-card, .campus-card, .event-card, .featured-event-card, .uv-pillar-card, .contact-card):focus-within {
+    border-color: rgba(233, 165, 47, 0.55);
+    box-shadow: 0 12px 28px rgba(11, 37, 69, 0.11);
+  }
+}
+
+:where(.cta-btn, .nav-signup-pill, .admin-nav-btn, .uv-btn-tour, .uv-btn-learn):active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.mobile-drawer.open nav a {
+  animation: pcetDrawerItemIn 0.28s var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+.mobile-drawer.open nav a:nth-child(2) { animation-delay: 25ms; }
+.mobile-drawer.open nav a:nth-child(3) { animation-delay: 50ms; }
+.mobile-drawer.open nav a:nth-child(4) { animation-delay: 75ms; }
+.mobile-drawer.open nav a:nth-child(5) { animation-delay: 100ms; }
+.mobile-drawer.open nav a:nth-child(6) { animation-delay: 125ms; }
+.mobile-drawer.open nav a:nth-child(7) { animation-delay: 150ms; }
+.mobile-drawer.open nav a:nth-child(8) { animation-delay: 175ms; }
+
+/* Keep the visual affordance useful for keyboard users too. */
+.mobile-drawer nav a:focus-visible,
+.mobile-drawer-footer a:focus-visible {
+  background: var(--canvas, #f8f7f3);
+  color: var(--navy-900, #0b2545);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .page-banner .breadcrumb,
+  .page-banner h1,
+  .page-banner p,
+  .mobile-drawer.open nav a {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .inst-links .nav-item:hover,
+  :where(.cta-btn, .nav-signup-pill, .admin-nav-btn, .uv-btn-tour, .uv-btn-learn):active {
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .uv-hero-backdrop,
+  .uv-chairman-circle,
+  .uv-hero-left {
+    translate: none !important;
+  }
+}

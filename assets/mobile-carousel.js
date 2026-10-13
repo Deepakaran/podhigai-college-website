@@ -8,6 +8,9 @@
   'use strict';
 
   const isMobile = () => window.innerWidth <= 767;
+  const prefersReducedMotion = () => Boolean(
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
 
   const esc = (str) => {
     if (!str) return '';
@@ -118,7 +121,7 @@
         '<span class="mob-featured-cat">' + esc(event.category) + '</span>' +
       '</div>' +
       '<div class="mob-featured-body">' +
-        '<div class="mob-event-meta"><span>&#128197; ' + esc(event.date) + '</span><span>&#128205; ' + esc(event.venue) + '</span></div>' +
+        '<div class="mob-event-meta"><span>&#128197; ' + esc(event.date) + '</span>' + (event.time ? '<span>&#9201; ' + esc(event.time) + '</span>' : '') + '<span>&#128205; ' + esc(event.venue) + '</span></div>' +
         '<h3 class="mob-event-title">' + esc(event.title) + '</h3>' +
         '<p class="mob-event-desc">' + esc(event.description) + '</p>' +
         '<button type="button" class="mob-event-btn" data-event-id="' + esc(event.id) + '"><span>Explore Gallery</span><span class="mob-arrow">&#8594;</span></button>' +
@@ -134,7 +137,7 @@
           '<span class="mob-event-cat-badge">' + esc(event.category) + '</span>' +
         '</div>' +
         '<div class="mob-event-card-body">' +
-          '<div class="mob-event-meta"><span>&#128197; ' + esc(event.date) + '</span><span>&#128205; ' + esc(event.venue) + '</span></div>' +
+          '<div class="mob-event-meta"><span>&#128197; ' + esc(event.date) + '</span>' + (event.time ? '<span>&#9201; ' + esc(event.time) + '</span>' : '') + '<span>&#128205; ' + esc(event.venue) + '</span></div>' +
           '<h4 class="mob-event-title">' + esc(event.title) + '</h4>' +
           '<p class="mob-event-desc">' + esc(event.description) + '</p>' +
           '<button type="button" class="mob-event-btn" data-event-id="' + esc(event.id) + '"><span>View Gallery</span><span class="mob-arrow">&#8594;</span></button>' +
@@ -164,7 +167,7 @@
 
   const startTimer = () => {
     stopTimer();
-    if (regularEvents.length <= 1) return;
+    if (regularEvents.length <= 1 || prefersReducedMotion()) return;
     carouselTimer = setInterval(function () {
       if (!isTouching) goToSlide(carouselIndex + 1);
     }, SLIDE_INTERVAL);
@@ -278,7 +281,7 @@
             '<span class="mob-event-cat-badge">' + esc(evt.category) + '</span>' +
           '</div>' +
           '<div class="mob-event-card-body">' +
-            '<div class="mob-event-meta"><span>&#128197; ' + esc(evt.date) + '</span><span>&#128205; ' + esc(evt.venue) + '</span></div>' +
+            '<div class="mob-event-meta"><span>&#128197; ' + esc(evt.date) + '</span>' + (evt.time ? '<span>&#9201; ' + esc(evt.time) + '</span>' : '') + '<span>&#128205; ' + esc(evt.venue) + '</span></div>' +
             '<h4 class="mob-event-title">' + esc(evt.title) + '</h4>' +
             '<p class="mob-event-desc">' + esc(evt.description) + '</p>' +
             '<button type="button" class="mob-event-btn" data-event-id="' + esc(evt.id) + '"><span>View Gallery</span><span class="mob-arrow">&#8594;</span></button>' +

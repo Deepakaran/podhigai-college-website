@@ -35,6 +35,14 @@ document.addEventListener('DOMContentLoaded', () => {
   handleScroll();
 
   if (mobileToggle && mobileDrawer) {
+    if (!mobileDrawer.id) mobileDrawer.id = 'mobileDrawer';
+    const setDrawerAccessibility = (isOpen) => {
+      mobileToggle.setAttribute('aria-controls', mobileDrawer.id);
+      mobileToggle.setAttribute('aria-expanded', String(isOpen));
+      mobileDrawer.setAttribute('aria-hidden', String(!isOpen));
+    };
+    setDrawerAccessibility(mobileDrawer.classList.contains('open'));
+
     // Ensure mobile drawer backdrop exists
     let drawerBackdrop = document.querySelector('.mobile-drawer-backdrop');
     if (!drawerBackdrop) {
@@ -49,14 +57,14 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileDrawer.style.maxHeight = `calc(100vh - ${navH}px)`;
       mobileDrawer.style.overflowY = 'auto';
       mobileDrawer.classList.add('open');
-      mobileToggle.setAttribute('aria-expanded', 'true');
+      setDrawerAccessibility(true);
       drawerBackdrop.classList.add('active');
       document.body.style.overflow = 'hidden';
     };
 
     const closeDrawer = () => {
       mobileDrawer.classList.remove('open');
-      mobileToggle.setAttribute('aria-expanded', 'false');
+      setDrawerAccessibility(false);
       drawerBackdrop.classList.remove('active');
       document.body.style.overflow = '';
     };
@@ -89,9 +97,9 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // Restore scroll and close drawer if resized above tablet breakpoint (> 1024px)
+    // Restore scroll and close drawer when desktop layout takes over at 1024px.
     window.addEventListener('resize', () => {
-      if (window.innerWidth > 1024 && mobileDrawer.classList.contains('open')) {
+      if (window.innerWidth >= 1024 && mobileDrawer.classList.contains('open')) {
         closeDrawer();
       }
     });
@@ -201,7 +209,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const question = item.querySelector('.faq-question, .faq-q');
     const answer = item.querySelector('.faq-answer, .faq-a');
     if (!question || !answer) return;
-    question.addEventListener('click', () => {
+
+    // The standalone FAQ page uses a div for its question. Give it the same
+    // keyboard semantics as the button-based homepage accordion.
+    if (question.tagName !== 'BUTTON') {
+      question.setAttribute('role', 'button');
+      question.setAttribute('tabindex', '0');
+    }
+    question.setAttribute('aria-expanded', item.classList.contains('open') ? 'true' : 'false');
+
+    const toggleFaq = () => {
       const isOpen = item.classList.contains('open');
       faqItems.forEach(fi => {
         fi.classList.remove('open');
@@ -215,6 +232,13 @@ document.addEventListener('DOMContentLoaded', () => {
         question.setAttribute('aria-expanded', 'true');
         answer.style.maxHeight = answer.scrollHeight + 'px';
       }
+    };
+
+    question.addEventListener('click', toggleFaq);
+    question.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleFaq();
     });
   });
 
@@ -244,36 +268,57 @@ document.addEventListener('DOMContentLoaded', () => {
     requestAnimationFrame(update);
   };
 
-  const counterObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        animateCounter(entry.target);
-        counterObserver.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.3 });
+  const finishCounter = (el) => {
+    if (el.getAttribute('data-animated')) return;
+    const target = parseFloat(el.getAttribute('data-target')) || 0;
+    let suffix = el.getAttribute('data-suffix') || '';
+    const prefix = el.getAttribute('data-prefix') || '';
+    if (!suffix && el.textContent.includes('+')) suffix = '+';
+    if (!suffix && el.textContent.includes('%')) suffix = '%';
+    el.textContent = prefix + target + suffix;
+    el.setAttribute('data-animated', 'true');
+  };
 
-  document.querySelectorAll('.counter[data-target], .count-up[data-target]').forEach(el => {
+  const counterElements = document.querySelectorAll('.counter[data-target], .count-up[data-target]');
+  counterElements.forEach(el => {
     let suffix = el.getAttribute('data-suffix') || '';
     if (!suffix && el.textContent.includes('+')) suffix = '+';
     if (!suffix && el.textContent.includes('%')) suffix = '%';
     el.textContent = (el.getAttribute('data-prefix') || '') + '0' + suffix;
-    counterObserver.observe(el);
   });
+
+  const hasIntersectionObserver = typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
+  if (hasIntersectionObserver) {
+    const counterObserver = new window.IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          animateCounter(entry.target);
+          counterObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.3 });
+    counterElements.forEach(el => counterObserver.observe(el));
+  } else {
+    counterElements.forEach(finishCounter);
+  }
 
   /* --------------------------------------------------------------------------
      4. SCROLL REVEALS
      -------------------------------------------------------------------------- */
   const revealEls = document.querySelectorAll('.reveal, .reveal-left, .reveal-right, .reveal-scale');
-  const revealObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        revealObserver.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
-  revealEls.forEach(el => revealObserver.observe(el));
+  if (hasIntersectionObserver) {
+    const revealObserver = new window.IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    revealEls.forEach(el => revealObserver.observe(el));
+  } else {
+    revealEls.forEach(el => el.classList.add('visible'));
+  }
 
   /* --------------------------------------------------------------------------
      5. DYNAMIC ADMIN-MANAGED CAMPUS GALLERY & LIGHTBOX SYSTEM
@@ -783,6 +828,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const robotPing = document.getElementById('robotPing');
   const chatBackdrop = document.getElementById('chatBackdrop');
 
+  const syncChatAccessibility = () => {
+    if (!robotDock) return;
+    if (chatWindow) {
+      if (!chatWindow.id) chatWindow.id = 'chatWindow';
+      robotDock.setAttribute('aria-controls', chatWindow.id);
+    } else {
+      robotDock.removeAttribute('aria-controls');
+    }
+    robotDock.setAttribute('aria-expanded', chatWindow?.classList.contains('open') ? 'true' : 'false');
+  };
+  syncChatAccessibility();
+
   // Dynamic Page Link Helper
   const isDeptPage = window.location.pathname.includes('/departments/') ||
     window.location.pathname.endsWith('/cse.html') ||
@@ -891,6 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     chatWindow?.classList.add('open');
     chatBackdrop?.classList.add('visible');
+    if (typeof syncChatAccessibility === 'function') syncChatAccessibility();
     robotPing?.classList.add('hidden');
     clearTimeout(tipTimer);
     hideTooltip();
@@ -911,6 +969,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeChat = () => {
     chatWindow?.classList.remove('open');
     chatBackdrop?.classList.remove('visible');
+    if (typeof syncChatAccessibility === 'function') syncChatAccessibility();
     
     // Restore background page scroll on mobile
     if (chatScrollLocked) {
